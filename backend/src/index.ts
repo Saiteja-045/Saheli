@@ -2,11 +2,15 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { connectDB } from './config/db';
+import { initializeAgentState } from './services/agentEngine';
 
 dotenv.config();
 
 // Connect to MongoDB
 connectDB();
+initializeAgentState().catch(err => {
+  console.error('Failed to initialize agent state:', err.message);
+});
 
 import authRouter from './routes/auth';
 import membersRouter from './routes/members';
@@ -19,7 +23,7 @@ import statsRouter from './routes/stats';
 import agentRouter from './routes/agent';
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.BACKEND_PORT || process.env.PORT || 3001);
 
 function escapeXml(value: string) {
   return value

@@ -56,6 +56,9 @@ export const transactionsApi = {
 export const loansApi = {
   getAll: () => apiFetch<any[]>('/loans'),
   getById: (id: string) => apiFetch<any>(`/loans/${id}`),
+  getBankQueue: () => apiFetch<any[]>('/loans/bank-queue/list'),
+  processBankQueue: (id: string, processedBy?: string) =>
+    apiFetch<any>(`/loans/bank-queue/${id}/process`, { method: 'POST', body: JSON.stringify({ processedBy }) }),
   request: (body: { memberId: string; amount: number; purpose: string }) =>
     apiFetch<any>('/loans/request', { method: 'POST', body: JSON.stringify(body) }),
   approve: (id: string) =>
@@ -78,6 +81,8 @@ export const multisigApi = {
 export const aiAgentApi = {
   getLog: () => apiFetch<any[]>('/ai-agent/log'),
   getInsights: () => apiFetch<any>('/ai-agent/insights'),
+  getSuggestions: (memberId?: string) =>
+    apiFetch<any[]>(`/ai-agent/suggestions${memberId ? `?memberId=${memberId}` : ''}`),
   chat: (body: { message: string; memberId?: string; memberName?: string }) =>
     apiFetch<any>('/ai-agent/chat', { method: 'POST', body: JSON.stringify(body) }),
 };

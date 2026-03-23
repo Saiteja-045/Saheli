@@ -59,7 +59,7 @@ export default function LeaderDashboard({ isReadOnly = false, activeSection = 't
   const [settings, setSettings] = useState({ emergencyAlerts: true, dailyDigest: true });
 
   const { data: treasury, loading: loadingTreasury } = useApiFetch(() => statsApi.getTreasury());
-  const { data: pendingActions, loading: loadingActions, refetch: refetchActions } = useApiFetch(() => multisigApi.getPending());
+  const { data: pendingActions, loading: loadingActions, refetch: refetchActions } = useApiPolling(() => multisigApi.getPending(), 4000);
   const { data: aiLog, loading: loadingLog } = useApiPolling(() => aiAgentApi.getLog(), 8000);
   const { data: agentLog, refetch: refetchAgentLog } = useApiPolling(() => agentApi.getLog(), 6000);
   const { data: vaultData, loading: loadingVaults, refetch: refetchVaults } = useApiFetch(() => agentApi.getVaults());
