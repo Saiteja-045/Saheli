@@ -1,10 +1,8 @@
 import { useState } from 'react';
 import { X, Brain, Zap, AlertCircle, CheckCircle2, Loader2, Wallet } from 'lucide-react';
-import { loansApi, qrApi } from '../lib/api';
-import QRCodeDisplay from './QRCodeDisplay';
+import { loansApi } from '../lib/api';
 import { toast } from 'sonner';
 import { useWallet } from '../contexts/WalletContext';
-import algosdk from 'algosdk';
 
 interface LoanRequestModalProps {
   onClose: () => void;
@@ -33,18 +31,9 @@ export default function LoanRequestModal({
   const [purpose, setPurpose] = useState('');
   const [customPurpose, setCustomPurpose] = useState('');
   const [result, setResult] = useState<any>(null);
-  const [qrData, setQrData] = useState<any>(null);
-  const { isConnected, accountAddress, peraWallet, connectWallet } = useWallet();
-
-  // TestNet Algod setup
-  const algodClient = new algosdk.Algodv2('', 'https://testnet-api.algonode.cloud', '');
+  const { isConnected, connectWallet } = useWallet();
 
   const handleSubmit = async () => {
-    if (!isConnected || !accountAddress) {
-      toast.error('Please connect your Pera Wallet first');
-      return;
-    }
-
     const amt = parseInt(amount);
     if (!amt || !purpose) {
       toast.error('Please fill in all fields');
@@ -54,65 +43,23 @@ export default function LoanRequestModal({
     setStep('evaluating');
 
     try {
-      // 1. Construct an on-chain transaction (e.g., a note indicating loan request)
-      const suggestedParams = await algodClient.getTransactionParams().do();
-      
-      const note = new TextEncoder().encode(JSON.stringify({
-        type: 'LOAN_REQUEST',
-        amount: amt,
-        purpose: customPurpose || purpose
-      }));
+      if (!isConnected) {
+        toast.info('Proceeding in gasless mode via SHG relayer');
+      }
 
-      // A simple 0 Algo transaction to self to log the request on-chain
-      const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
-        sender: accountAddress,
-        receiver: accountAddress,
-        amount: 0,
-        note,
-        suggestedParams
-      });
-
-      // 2. Sign transaction with Pera Wallet
-      const singleTxnGroups = [{ txn, signers: [accountAddress] }];
-      const signedTxn = await peraWallet.signTransaction([singleTxnGroups]);
-
-      // 3. Send transaction to network
-      const sendRes = await algodClient.sendRawTransaction(signedTxn).do();
-      const txId = (sendRes as any).txId || (sendRes as any).txid;
-      
-      // Wait for confirmation (simplified)
-      await algosdk.waitForConfirmation(algodClient, txId, 4);
-
-      // 4. Update backend (mock AI evaluation)
       const res = await loansApi.request({
         memberId,
         amount: amt,
         purpose: customPurpose || purpose,
       });
-      setResult({ ...res, loan: { ...res.loan, txHash: txId } });
-
-      // Generate QR if loan was auto-approved
-      if (res.loan?.status === 'approved') {
-        try {
-          const qr = await qrApi.generate({
-            txHash: txId,
-            memberId,
-            memberName,
-            amount: amt,
-            type: 'loan_disbursement',
-          });
-          setQrData(qr);
-        } catch {
-          // QR optional
-        }
-      }
+      setResult(res);
 
       setStep('result');
 
       if (res.loan?.status === 'approved') {
         toast.success(`Loan of ₹${amt.toLocaleString('en-IN')} approved!`);
       } else {
-        toast.info('Loan submitted for multi-sig approval');
+        toast.info('Loan submitted. Leader approval required before QR generation.');
       }
     } catch (err: any) {
       console.error(err);
@@ -200,24 +147,24 @@ export default function LoanRequestModal({
                 />
               </div>
 
-              {isConnected ? (
-                <button
-                  onClick={handleSubmit}
-                  disabled={!amount || (!purpose && !customPurpose)}
-                  className="w-full py-3.5 bg-shg-primary text-white rounded-xl font-bold text-sm hover:opacity-90 transition-opacity active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  <Brain className="w-4 h-4" />
-                  Sign & Submit for AI Evaluation
-                </button>
-              ) : (
+              {!isConnected && (
                 <button
                   onClick={connectWallet}
-                  className="w-full py-3.5 bg-slate-800 text-white rounded-xl font-bold text-sm hover:opacity-90 transition-opacity active:scale-95 flex items-center justify-center gap-2"
+                  className="w-full mb-2 py-3.5 bg-slate-800 text-white rounded-xl font-bold text-sm hover:opacity-90 transition-opacity active:scale-95 flex items-center justify-center gap-2"
                 >
                   <Wallet className="w-4 h-4" />
-                  Connect Pera Wallet to Request
+                  Connect Pera Wallet (Optional)
                 </button>
               )}
+
+              <button
+                onClick={handleSubmit}
+                disabled={!amount || (!purpose && !customPurpose)}
+                className="w-full py-3.5 bg-shg-primary text-white rounded-xl font-bold text-sm hover:opacity-90 transition-opacity active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <Brain className="w-4 h-4" />
+                Submit for Leader Approval
+              </button>
             </>
           )}
 
@@ -267,23 +214,9 @@ export default function LoanRequestModal({
                   <Brain className="w-4 h-4 text-shg-primary" />
                   <span className="text-xs font-bold uppercase text-muted-foreground">AI Reasoning</span>
                 </div>
+                <p className="text-[11px] text-muted-foreground mb-1">Member: {memberName}</p>
                 <p className="text-sm text-on-surface italic">"{result.evaluation?.reason}"</p>
               </div>
-
-              {/* QR Code if approved */}
-              {qrData && (
-                <div className="mb-4">
-                  <QRCodeDisplay
-                    qrCode={qrData.qrCode}
-                    txHash={qrData.txHash}
-                    explorerUrl={qrData.explorerUrl}
-                    amount={result.loan?.amount}
-                    type="Loan Disbursement"
-                    memberName={memberName}
-                    compact={true}
-                  />
-                </div>
-              )}
 
               <button
                 onClick={onClose}

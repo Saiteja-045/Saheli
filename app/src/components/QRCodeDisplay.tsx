@@ -7,6 +7,7 @@ interface QRCodeDisplayProps {
   amount?: number;
   type?: string;
   memberName?: string;
+  walletDeepLink?: string;
   compact?: boolean;
 }
 
@@ -17,6 +18,7 @@ export default function QRCodeDisplay({
   amount,
   type,
   memberName,
+  walletDeepLink,
   compact = false,
 }: QRCodeDisplayProps) {
   const handleDownload = () => {
@@ -37,6 +39,14 @@ export default function QRCodeDisplay({
         <p className="text-[10px] font-mono text-muted-foreground text-center">
           {txHash.slice(0, 24)}...
         </p>
+        {walletDeepLink && (
+          <a
+            href={walletDeepLink}
+            className="mt-2 text-[10px] font-bold text-shg-primary hover:underline"
+          >
+            Open in Pera Wallet
+          </a>
+        )}
       </div>
     );
   }
@@ -104,6 +114,14 @@ export default function QRCodeDisplay({
           <ExternalLink className="w-4 h-4" />
           Verify
         </a>
+        {walletDeepLink && (
+          <a
+            href={walletDeepLink}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-border rounded-xl text-sm font-semibold hover:bg-surface transition-colors"
+          >
+            Open in Pera
+          </a>
+        )}
         <button
           onClick={() => {
             if (navigator.share) {

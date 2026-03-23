@@ -11,7 +11,7 @@ const mutableLoans: Loan[] = [...loans];
 function evaluateLoan(trustScore: number, amount: number, purpose: string): {
   recommendation: 'approve' | 'review' | 'reject';
   reason: string;
-  autoApprove: boolean;
+  fastTrack: boolean;
 } {
   const isEmergency = /medical|hospital|emergency|health/i.test(purpose);
   const isMicroLoan = amount <= 5000;
@@ -19,35 +19,35 @@ function evaluateLoan(trustScore: number, amount: number, purpose: string): {
   if (trustScore >= 800 && isMicroLoan) {
     return {
       recommendation: 'approve',
-      reason: `Trust score ${trustScore}/1000. Micro-loan within auto-approval threshold. AI auto-approving instantly.`,
-      autoApprove: true,
+      reason: `Trust score ${trustScore}/1000. Micro-loan qualifies for fast-track leader approval.`,
+      fastTrack: true,
     };
   }
   if (trustScore >= 750 && isEmergency) {
     return {
       recommendation: 'approve',
       reason: `Emergency medical loan. Trust score ${trustScore}/1000 clears emergency threshold. Routing for expedited 1/3 multi-sig approval.`,
-      autoApprove: false,
+      fastTrack: true,
     };
   }
   if (trustScore >= 700) {
     return {
       recommendation: 'approve',
       reason: `Trust score ${trustScore}/1000 meets approval threshold. Routing for standard multi-sig approval.`,
-      autoApprove: false,
+      fastTrack: false,
     };
   }
   if (trustScore >= 600) {
     return {
       recommendation: 'review',
       reason: `Trust score ${trustScore}/1000 is below confidence threshold. Manual review by SHG leader recommended.`,
-      autoApprove: false,
+      fastTrack: false,
     };
   }
   return {
     recommendation: 'reject',
     reason: `Trust score ${trustScore}/1000 is insufficient for this loan amount. Member should improve repayment consistency first.`,
-    autoApprove: false,
+    fastTrack: false,
   };
 }
 
@@ -82,7 +82,6 @@ router.post('/request', (req: Request, res: Response) => {
   }
 
   const evaluation = evaluateLoan(member.trustScore, amount, purpose);
-  const txHash = evaluation.autoApprove ? generateTxHash() : undefined;
 
   const newLoan: Loan = {
     id: uuidv4(),
@@ -90,19 +89,14 @@ router.post('/request', (req: Request, res: Response) => {
     memberName: member.name,
     amount,
     purpose,
-    status: evaluation.autoApprove ? 'approved' : 'pending',
+    status: 'pending',
     trustScoreAtApplication: member.trustScore,
     aiRecommendation: evaluation.recommendation,
     aiReason: evaluation.reason,
-    approvals: evaluation.autoApprove ? 3 : 0,
-    approvalsRequired: amount <= 5000 ? 1 : 3,
-    disbursedAt: evaluation.autoApprove ? new Date().toISOString() : undefined,
-    dueDate: evaluation.autoApprove
-      ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-      : undefined,
+    approvals: 0,
+    approvalsRequired: evaluation.fastTrack ? 1 : 3,
     repaidAmount: 0,
     createdAt: new Date().toISOString(),
-    txHash,
   };
 
   mutableLoans.unshift(newLoan);
@@ -112,11 +106,7 @@ router.post('/request', (req: Request, res: Response) => {
     data: {
       loan: newLoan,
       evaluation,
-      txHash,
-      message: evaluation.autoApprove
-        ? `🤖 AI Agent auto-approved ₹${amount.toLocaleString('en-IN')} for ${member.name}`
-        : `📋 Loan request submitted. AI recommendation: ${evaluation.recommendation.toUpperCase()}`,
-      explorerUrl: txHash ? `https://testnet.algoexplorer.io/tx/${txHash}` : undefined,
+      message: `📋 Loan request submitted. Leader approval is required before funds are disbursed and QR proof is generated.`,
     },
   });
 });

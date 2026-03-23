@@ -3,29 +3,47 @@ import {
   Wallet, 
   ShieldCheck, 
   Brain, 
+  CalendarClock,
+  QrCode,
+  HandCoins,
   Settings, 
-  HelpCircle, 
-  ArrowRightLeft 
+  HelpCircle 
 } from 'lucide-react';
 
 interface SidebarProps {
   currentRole?: 'member' | 'leader' | 'bank';
+  activeSection?: string;
+  onSectionChange?: (section: any) => void;
 }
 
-const menuItems = [
-  { id: 'passport', label: 'Financial Passport', icon: Badge },
-  { id: 'treasury', label: 'Treasury Management', icon: Wallet },
-  { id: 'audit', label: 'Audit Logs', icon: ShieldCheck },
-  { id: 'ai', label: 'AI Insights', icon: Brain },
-];
+const roleMenu = {
+  member: [
+    { id: 'passport', label: 'Financial Passport', icon: Badge },
+    { id: 'treasury', label: 'Treasury', icon: Wallet },
+    { id: 'audit', label: 'Audit Logs', icon: ShieldCheck },
+    { id: 'ai', label: 'AI Assistant', icon: Brain },
+    { id: 'auto-repayment', label: 'Auto-Repayment', icon: CalendarClock },
+  ],
+  leader: [
+    { id: 'treasury', label: 'Treasury Management', icon: Wallet },
+    { id: 'audit', label: 'Audit Logs', icon: ShieldCheck },
+    { id: 'ai', label: 'AI Insights', icon: Brain },
+  ],
+  bank: [
+    { id: 'scanner', label: 'Launch Scanner', icon: QrCode },
+    { id: 'audit', label: 'Audit Directory', icon: ShieldCheck },
+    { id: 'grants', label: 'Grant Approval', icon: HandCoins },
+  ],
+} as const;
 
-const bottomItems = [
+const commonBottomItems = [
   { id: 'settings', label: 'Settings', icon: Settings },
   { id: 'support', label: 'Support', icon: HelpCircle },
-];
+] as const;
 
-export default function Sidebar({ currentRole }: SidebarProps) {
-  const activeItem = currentRole === 'member' ? 'passport' : 'treasury';
+export default function Sidebar({ currentRole = 'member', activeSection, onSectionChange }: SidebarProps) {
+  const menuItems = roleMenu[currentRole];
+  const selected = activeSection || (currentRole === 'member' ? 'passport' : currentRole === 'leader' ? 'treasury' : 'scanner');
 
   return (
     <aside className="hidden lg:flex h-screen w-64 fixed left-0 top-0 border-r border-border/50 bg-white flex-col py-6 z-40">
@@ -39,12 +57,12 @@ export default function Sidebar({ currentRole }: SidebarProps) {
       <nav className="flex-1 px-3 space-y-1">
         {menuItems.map((item) => {
           const Icon = item.icon;
-          const isActive = item.id === activeItem;
+          const isActive = item.id === selected;
           return (
-            <a
+            <button
               key={item.id}
-              href="#"
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
+              onClick={() => onSectionChange?.(item.id)}
+              className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
                 isActive
                   ? 'bg-shg-primary/10 text-shg-primary font-semibold'
                   : 'text-muted-foreground hover:bg-surface hover:text-on-surface'
@@ -52,35 +70,29 @@ export default function Sidebar({ currentRole }: SidebarProps) {
             >
               <Icon className={`w-5 h-5 ${isActive ? 'text-shg-primary' : 'text-muted-foreground group-hover:text-on-surface'}`} />
               <span className="font-medium text-sm">{item.label}</span>
-            </a>
+            </button>
           );
         })}
       </nav>
 
       {/* Bottom Actions */}
       <div className="px-3 mt-auto space-y-4">
-        {/* Switch Persona Button */}
-        <button 
-          onClick={() => window.location.reload()}
-          className="w-full py-3 bg-shg-primary text-white rounded-xl font-semibold flex items-center justify-center gap-2 hover:opacity-90 active:scale-95 transition-all"
-        >
-          <ArrowRightLeft className="w-4 h-4" />
-          Switch Persona
-        </button>
-
         {/* Bottom Links */}
         <div className="pt-4 border-t border-border/50 space-y-1">
-          {bottomItems.map((item) => {
+          {commonBottomItems.map((item) => {
             const Icon = item.icon;
+            const isActive = item.id === selected;
             return (
-              <a
+              <button
                 key={item.id}
-                href="#"
-                className="flex items-center gap-3 px-4 py-2 text-muted-foreground hover:text-shg-primary transition-colors"
+                onClick={() => onSectionChange?.(item.id)}
+                className={`flex w-full items-center gap-3 px-4 py-2 rounded-lg transition-colors text-left ${
+                  isActive ? 'bg-shg-primary/10 text-shg-primary font-semibold' : 'text-muted-foreground hover:text-shg-primary'
+                }`}
               >
                 <Icon className="w-4 h-4" />
                 <span className="text-sm font-medium">{item.label}</span>
-              </a>
+              </button>
             );
           })}
         </div>

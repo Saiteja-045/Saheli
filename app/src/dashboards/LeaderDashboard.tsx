@@ -14,14 +14,18 @@ import {
   Cpu,
   ShieldAlert,
   Eye,
+  LifeBuoy,
+  Save,
+  Bell,
 } from 'lucide-react';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { gsap } from 'gsap';
 import { useApiFetch, useApiPolling, useApiMutation } from '../hooks/useApi';
-import { statsApi, multisigApi, aiAgentApi, agentApi } from '../lib/api';
+import { statsApi, multisigApi, aiAgentApi, agentApi, transactionsApi, membersApi, loansApi, qrApi } from '../lib/api';
 import { toast } from 'sonner';
 import AgentTerminal from '../components/AgentTerminal';
 import IdleFundPanel from '../components/IdleFundPanel';
+import QRCodeDisplay from '../components/QRCodeDisplay';
 
 const Skeleton = ({ className = '' }: { className?: string }) => (
   <div className={`bg-surface animate-pulse rounded-lg ${className}`} />
@@ -39,20 +43,33 @@ const iconMap: Record<string, typeof CheckCircle2> = {
   CheckCircle2, Zap, AlertTriangle, Clock, TrendingUp, Cpu, ShieldAlert,
 };
 
-export default function LeaderDashboard({ isReadOnly = false }: { isReadOnly?: boolean }) {
+interface LeaderDashboardProps {
+  isReadOnly?: boolean;
+  activeSection?: string;
+}
+
+export default function LeaderDashboard({ isReadOnly = false, activeSection = 'treasury' }: LeaderDashboardProps) {
   const dashboardRef = useRef<HTMLDivElement>(null);
   const [actionMessages, setActionMessages] = useState<Record<string, string>>({});
   const [investing, setInvesting] = useState(false);
   const [harvesting, setHarvesting] = useState(false);
+  const [showTxModal, setShowTxModal] = useState(false);
+  const [txForm, setTxForm] = useState({ memberId: 'm1', type: 'deposit', amount: '', description: '' });
+  const [loanQRCodes, setLoanQRCodes] = useState<Record<string, any>>({});
+  const [settings, setSettings] = useState({ emergencyAlerts: true, dailyDigest: true });
 
   const { data: treasury, loading: loadingTreasury } = useApiFetch(() => statsApi.getTreasury());
   const { data: pendingActions, loading: loadingActions, refetch: refetchActions } = useApiFetch(() => multisigApi.getPending());
   const { data: aiLog, loading: loadingLog } = useApiPolling(() => aiAgentApi.getLog(), 8000);
   const { data: agentLog, refetch: refetchAgentLog } = useApiPolling(() => agentApi.getLog(), 6000);
   const { data: vaultData, loading: loadingVaults, refetch: refetchVaults } = useApiFetch(() => agentApi.getVaults());
+  const { data: members } = useApiFetch(() => membersApi.getAll());
+  const { data: loans, loading: loadingLoans, refetch: refetchLoans } = useApiFetch(() => loansApi.getAll());
 
   const { mutate: signAction, loading: signing } = useApiMutation((id: string) => multisigApi.sign(id, 'leader_current'));
   const { mutate: rejectAction } = useApiMutation((id: string) => multisigApi.reject(id));
+  const { mutate: createTransaction, loading: creatingTx } = useApiMutation((body: any) => transactionsApi.create(body));
+  const { mutate: approveLoan, loading: approvingLoan } = useApiMutation((id: string) => loansApi.approve(id));
 
   useEffect(() => {
     if (!loadingTreasury) {
@@ -111,6 +128,131 @@ export default function LeaderDashboard({ isReadOnly = false }: { isReadOnly?: b
     setHarvesting(false);
   }, [refetchVaults, refetchAgentLog]);
 
+  const handleExportReport = () => {
+    const rows = [
+      ['Section', 'Metric', 'Value'],
+      ['Treasury', 'Total Liquidity', String(treasury?.totalLiquidity || 0)],
+      ['Treasury', 'Yield This Month', String(treasury?.yieldThisMonth || 0)],
+      ['Approvals', 'Pending Multi-sig Actions', String((pendingActions || []).length)],
+      ['Loans', 'Pending Loan Requests', String((loans || []).filter((l: any) => l.status === 'pending').length)],
+      ['Loans', 'Approved Loans', String((loans || []).filter((l: any) => l.status === 'approved').length)],
+    ];
+    const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `saheli-leader-report-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Report exported successfully');
+  };
+
+  const handleCreateTransaction = async () => {
+    const amount = parseInt(txForm.amount, 10);
+    if (!txForm.memberId || !txForm.type || !amount) {
+      toast.error('Please provide member, type and amount');
+      return;
+    }
+
+    try {
+      await createTransaction({
+        memberId: txForm.memberId,
+        type: txForm.type,
+        amount,
+        description: txForm.description || `Leader initiated ${txForm.type}`,
+      });
+      toast.success('Transaction created on-chain');
+      setShowTxModal(false);
+      setTxForm({ memberId: txForm.memberId, type: 'deposit', amount: '', description: '' });
+    } catch {
+      toast.error('Transaction failed. Check backend connection.');
+    }
+  };
+
+  const handleApproveLoan = async (loanId: string) => {
+    try {
+      const res = await approveLoan(loanId);
+      toast.success(res.message || 'Loan approval recorded');
+      refetchLoans();
+    } catch {
+      toast.error('Unable to approve loan');
+    }
+  };
+
+  const handleGenerateLoanQR = async (loan: any) => {
+    if (loan.status !== 'approved' || !loan.txHash) {
+      toast.error('Loan must be approved before generating QR');
+      return;
+    }
+    try {
+      const qr = await qrApi.generate({
+        txHash: loan.txHash,
+        memberId: loan.memberId,
+        memberName: loan.memberName,
+        amount: loan.amount,
+        type: 'loan_disbursement',
+      });
+      setLoanQRCodes((prev) => ({ ...prev, [loan.id]: qr }));
+      toast.success('Loan disbursement QR generated');
+    } catch {
+      toast.error('Could not generate QR');
+    }
+  };
+
+  if (activeSection === 'settings') {
+    return (
+      <div className="p-6 lg:p-10 max-w-4xl mx-auto space-y-6">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-shg-primary mb-2">Leader Preferences</p>
+          <h2 className="text-2xl font-black font-headline text-on-surface">Settings</h2>
+        </div>
+        <div className="bg-white border border-border/50 rounded-2xl p-6 space-y-4">
+          <div className="flex items-center justify-between p-4 bg-surface rounded-xl">
+            <div className="flex items-center gap-2 text-sm font-semibold"><Bell className="w-4 h-4 text-shg-primary" />Emergency Alerts</div>
+            <button
+              onClick={() => setSettings((s) => ({ ...s, emergencyAlerts: !s.emergencyAlerts }))}
+              className={`w-12 h-6 rounded-full ${settings.emergencyAlerts ? 'bg-shg-primary' : 'bg-border'}`}
+            >
+              <span className={`block w-5 h-5 bg-white rounded-full transition-transform ${settings.emergencyAlerts ? 'translate-x-6' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+          <div className="flex items-center justify-between p-4 bg-surface rounded-xl">
+            <div className="flex items-center gap-2 text-sm font-semibold"><FileText className="w-4 h-4 text-shg-primary" />Daily Digest</div>
+            <button
+              onClick={() => setSettings((s) => ({ ...s, dailyDigest: !s.dailyDigest }))}
+              className={`w-12 h-6 rounded-full ${settings.dailyDigest ? 'bg-shg-primary' : 'bg-border'}`}
+            >
+              <span className={`block w-5 h-5 bg-white rounded-full transition-transform ${settings.dailyDigest ? 'translate-x-6' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+          <button onClick={() => toast.success('Leader settings saved')} className="px-5 py-2.5 bg-shg-primary text-white rounded-xl font-semibold text-sm inline-flex items-center gap-2">
+            <Save className="w-4 h-4" />
+            Save Settings
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeSection === 'support') {
+    return (
+      <div className="p-6 lg:p-10 max-w-4xl mx-auto space-y-6">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-shg-primary mb-2">Leader Helpdesk</p>
+          <h2 className="text-2xl font-black font-headline text-on-surface">Support</h2>
+        </div>
+        <div className="bg-white border border-border/50 rounded-2xl p-6 space-y-4">
+          <p className="text-sm text-muted-foreground">Raise infrastructure issues, WhatsApp delivery failures, and bank integration escalations.</p>
+          <button onClick={() => toast.success('Priority support ticket opened for leader account')} className="px-5 py-2.5 bg-shg-primary text-white rounded-xl font-semibold text-sm inline-flex items-center gap-2">
+            <LifeBuoy className="w-4 h-4" />
+            Open Support Ticket
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div ref={dashboardRef} className="p-6 lg:p-10 max-w-7xl mx-auto space-y-8">
       {/* Header */}
@@ -131,11 +273,11 @@ export default function LeaderDashboard({ isReadOnly = false }: { isReadOnly?: b
             </div>
           ) : (
             <div className="flex gap-3">
-              <button className="px-5 py-2.5 bg-surface text-on-surface rounded-full font-semibold text-sm hover:bg-surface-container transition-colors flex items-center gap-2">
+              <button onClick={handleExportReport} className="px-5 py-2.5 bg-surface text-on-surface rounded-full font-semibold text-sm hover:bg-surface-container transition-colors flex items-center gap-2">
                 <FileText className="w-4 h-4" />
                 Export Report
               </button>
-              <button className="px-5 py-2.5 bg-shg-primary text-white rounded-full font-semibold text-sm hover:opacity-90 transition-opacity flex items-center gap-2 shadow-lg shadow-shg-primary/20">
+              <button onClick={() => setShowTxModal(true)} className="px-5 py-2.5 bg-shg-primary text-white rounded-full font-semibold text-sm hover:opacity-90 transition-opacity flex items-center gap-2 shadow-lg shadow-shg-primary/20">
                 <Plus className="w-4 h-4" />
                 New Transaction
               </button>
@@ -201,6 +343,68 @@ export default function LeaderDashboard({ isReadOnly = false }: { isReadOnly?: b
           </p>
         </div>
       </div>
+
+      {/* Loan approvals (leader gating before QR) */}
+      <section className="bg-white border border-border/50 rounded-2xl p-6">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-lg font-bold font-headline text-on-surface">Loan Requests</h3>
+          <span className="text-xs font-bold text-muted-foreground">
+            {(loans || []).filter((l: any) => l.status === 'pending').length} pending approvals
+          </span>
+        </div>
+
+        {loadingLoans ? (
+          <Skeleton className="h-24 w-full" />
+        ) : (loans || []).length === 0 ? (
+          <p className="text-sm text-muted-foreground">No loan requests found.</p>
+        ) : (
+          <div className="space-y-4">
+            {(loans || []).slice(0, 6).map((loan: any) => (
+              <div key={loan.id} className="p-4 bg-surface rounded-xl border border-border/40">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <p className="font-bold text-on-surface">{loan.memberName} · ₹{loan.amount?.toLocaleString('en-IN')}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Purpose: {loan.purpose}</p>
+                    <p className="text-xs text-muted-foreground">Status: <span className="font-semibold uppercase">{loan.status}</span> ({loan.approvals}/{loan.approvalsRequired})</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {loan.status === 'pending' && !isReadOnly && (
+                      <button
+                        onClick={() => handleApproveLoan(loan.id)}
+                        disabled={approvingLoan}
+                        className="px-4 py-2 bg-shg-primary text-white rounded-lg text-sm font-bold disabled:opacity-60"
+                      >
+                        Approve Loan
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleGenerateLoanQR(loan)}
+                      disabled={loan.status !== 'approved'}
+                      className="px-4 py-2 border border-border rounded-lg text-sm font-bold hover:bg-white disabled:opacity-50"
+                    >
+                      Generate QR
+                    </button>
+                  </div>
+                </div>
+                {loanQRCodes[loan.id] && (
+                  <div className="mt-3">
+                    <QRCodeDisplay
+                      qrCode={loanQRCodes[loan.id].qrCode}
+                      txHash={loanQRCodes[loan.id].txHash}
+                      explorerUrl={loanQRCodes[loan.id].explorerUrl}
+                      amount={loan.amount}
+                      memberName={loan.memberName}
+                      type="loan_disbursement"
+                      walletDeepLink={loanQRCodes[loan.id].walletDeepLink}
+                      compact={true}
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* Main Content Grid — Multi-Sig + Classic AI Log */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -421,6 +625,64 @@ export default function LeaderDashboard({ isReadOnly = false }: { isReadOnly?: b
           </div>
         </div>
       </div>
+
+      {showTxModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white rounded-2xl border border-border p-6 space-y-4">
+            <h3 className="text-lg font-bold font-headline">Create New Transaction</h3>
+            <div>
+              <label className="text-xs font-bold uppercase text-muted-foreground">Member</label>
+              <select
+                value={txForm.memberId}
+                onChange={(e) => setTxForm((s) => ({ ...s, memberId: e.target.value }))}
+                className="mt-1 w-full border border-border rounded-lg px-3 py-2 text-sm"
+              >
+                {(members || []).map((m: any) => (
+                  <option key={m._id || m.id} value={m._id || m.id}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-bold uppercase text-muted-foreground">Type</label>
+                <select
+                  value={txForm.type}
+                  onChange={(e) => setTxForm((s) => ({ ...s, type: e.target.value }))}
+                  className="mt-1 w-full border border-border rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="deposit">Deposit</option>
+                  <option value="withdrawal">Withdrawal</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase text-muted-foreground">Amount</label>
+                <input
+                  type="number"
+                  value={txForm.amount}
+                  onChange={(e) => setTxForm((s) => ({ ...s, amount: e.target.value }))}
+                  className="mt-1 w-full border border-border rounded-lg px-3 py-2 text-sm"
+                  placeholder="500"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold uppercase text-muted-foreground">Description</label>
+              <input
+                value={txForm.description}
+                onChange={(e) => setTxForm((s) => ({ ...s, description: e.target.value }))}
+                className="mt-1 w-full border border-border rounded-lg px-3 py-2 text-sm"
+                placeholder="Optional note"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setShowTxModal(false)} className="px-4 py-2 border border-border rounded-lg text-sm font-semibold">Cancel</button>
+              <button onClick={handleCreateTransaction} disabled={creatingTx} className="px-4 py-2 bg-shg-primary text-white rounded-lg text-sm font-semibold disabled:opacity-60">
+                {creatingTx ? 'Creating...' : 'Submit'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

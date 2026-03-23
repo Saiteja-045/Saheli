@@ -6,11 +6,14 @@ import {
   Search,
   Landmark,
   Activity,
+  LifeBuoy,
+  Save,
 } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
-import { useApiFetch, useApiPolling } from '../hooks/useApi';
-import { statsApi } from '../lib/api';
+import { useApiFetch, useApiMutation, useApiPolling } from '../hooks/useApi';
+import { qrApi, statsApi } from '../lib/api';
+import { toast } from 'sonner';
 
 const Skeleton = ({ className = '' }: { className?: string }) => (
   <div className={`bg-surface animate-pulse rounded-lg ${className}`} />
@@ -23,12 +26,21 @@ function timeAgo(ts: string) {
   return `${Math.floor(diff / 3600000)}+ hours ago`;
 }
 
-export default function BankDashboard() {
-  const dashboardRef = useRef<HTMLDivElement>(null);
+interface BankDashboardProps {
+  activeSection?: string;
+}
 
-  const { data: stats, loading: loadingStats } = useApiFetch(() => statsApi.getInstitutional());
+export default function BankDashboard({ activeSection = 'scanner' }: BankDashboardProps) {
+  const dashboardRef = useRef<HTMLDivElement>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scanInput, setScanInput] = useState('');
+  const [scanResult, setScanResult] = useState<any>(null);
+
+  const { data: stats, loading: loadingStats, refetch: refetchStats } = useApiFetch(() => statsApi.getInstitutional());
   const { data: shgDirectory, loading: loadingDirectory } = useApiFetch(() => statsApi.getSHGDirectory());
   const { data: ledger } = useApiPolling(() => statsApi.getLedger(), 6000);
+  const { mutate: verifyTx, loading: verifyingTx } = useApiMutation((txHash: string) => qrApi.verify(txHash));
+  const { mutate: approveGrant, loading: approvingGrant } = useApiMutation((_input: null) => statsApi.approveGrant());
 
   useEffect(() => {
     if (!loadingStats) {
@@ -43,6 +55,72 @@ export default function BankDashboard() {
     { month: 'Jan', pct: 40 }, { month: 'Feb', pct: 55 }, { month: 'Mar', pct: 45 },
     { month: 'Apr', pct: 70 }, { month: 'May', pct: 85 }, { month: 'Jun', pct: 95 },
   ];
+
+  const handleVerifyScan = async () => {
+    if (!scanInput.trim()) {
+      toast.error('Enter transaction hash or QR JSON payload');
+      return;
+    }
+
+    try {
+      let txHash = scanInput.trim();
+      if (txHash.startsWith('{')) {
+        const parsed = JSON.parse(txHash);
+        txHash = parsed.txHash || txHash;
+      }
+      const result = await verifyTx(txHash);
+      setScanResult(result);
+      toast.success('Transaction verified successfully');
+    } catch {
+      toast.error('Could not verify transaction payload');
+    }
+  };
+
+  const handleApproveGrant = async () => {
+    try {
+      const res = await approveGrant(null);
+      toast.success(res.message || 'Grant approved');
+      refetchStats();
+    } catch {
+      toast.error('Grant approval failed');
+    }
+  };
+
+  if (activeSection === 'settings') {
+    return (
+      <div className="p-6 lg:p-10 max-w-4xl mx-auto space-y-6">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-shg-primary mb-2">Institution Settings</p>
+          <h2 className="text-2xl font-black font-headline text-on-surface">Settings</h2>
+        </div>
+        <div className="bg-white border border-border/50 rounded-2xl p-6 space-y-4">
+          <p className="text-sm text-muted-foreground">Configure bank-level scanner workflows, audit frequency, and grant release preferences.</p>
+          <button onClick={() => toast.success('Institution settings saved')} className="px-5 py-2.5 bg-shg-primary text-white rounded-xl font-semibold text-sm inline-flex items-center gap-2">
+            <Save className="w-4 h-4" />
+            Save Settings
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeSection === 'support') {
+    return (
+      <div className="p-6 lg:p-10 max-w-4xl mx-auto space-y-6">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-shg-primary mb-2">Institution Support</p>
+          <h2 className="text-2xl font-black font-headline text-on-surface">Support</h2>
+        </div>
+        <div className="bg-white border border-border/50 rounded-2xl p-6 space-y-4">
+          <p className="text-sm text-muted-foreground">Need help with scanner onboarding, compliance exports, or grant audit proof?</p>
+          <button onClick={() => toast.success('Support request sent to Saheli enterprise team')} className="px-5 py-2.5 bg-shg-primary text-white rounded-xl font-semibold text-sm inline-flex items-center gap-2">
+            <LifeBuoy className="w-4 h-4" />
+            Contact Support
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div ref={dashboardRef} className="p-6 lg:p-10 max-w-7xl mx-auto">
@@ -92,7 +170,10 @@ export default function BankDashboard() {
             <p className="text-sm text-muted-foreground mb-5 px-2">
               Scan the member's Physical d-SBT card to fetch immutable credit history from the ledger.
             </p>
-            <button className="px-6 py-2.5 bg-shg-primary text-white rounded-full font-bold text-sm hover:shadow-lg transition-all active:scale-95">
+            <button
+              onClick={() => setScannerOpen(true)}
+              className="px-6 py-2.5 bg-shg-primary text-white rounded-full font-bold text-sm hover:shadow-lg transition-all active:scale-95"
+            >
               Launch Scanner
             </button>
           </div>
@@ -143,9 +224,13 @@ export default function BankDashboard() {
                 )}
               </div>
             </div>
-            <button className="bg-shg-secondary text-white px-5 py-2.5 rounded-full font-bold text-sm flex items-center gap-2 hover:opacity-90 transition-opacity shadow-md active:scale-95">
+            <button
+              onClick={handleApproveGrant}
+              disabled={approvingGrant}
+              className="bg-shg-secondary text-white px-5 py-2.5 rounded-full font-bold text-sm flex items-center gap-2 hover:opacity-90 transition-opacity shadow-md active:scale-95 disabled:opacity-60"
+            >
               <CheckCircle2 className="w-4 h-4" />
-              1-Click Grant Approval
+              {approvingGrant ? 'Approving...' : '1-Click Grant Approval'}
             </button>
           </div>
         </div>
@@ -310,6 +395,38 @@ export default function BankDashboard() {
           </div>
         </div>
       </div>
+
+      {scannerOpen && (
+        <div className="fixed inset-0 z-50 bg-black/55 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white rounded-2xl p-6 border border-border space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold font-headline">Offline Verification Scanner</h3>
+              <button onClick={() => setScannerOpen(false)} className="text-sm font-semibold text-muted-foreground hover:text-on-surface">Close</button>
+            </div>
+            <p className="text-xs text-muted-foreground">Paste transaction hash or full QR JSON payload.</p>
+            <textarea
+              value={scanInput}
+              onChange={(e) => setScanInput(e.target.value)}
+              className="w-full border border-border rounded-lg p-3 text-sm min-h-24"
+              placeholder='TXHASH... or {"txHash":"..."}'
+            />
+            <div className="flex justify-end">
+              <button onClick={handleVerifyScan} disabled={verifyingTx} className="px-4 py-2 bg-shg-primary text-white rounded-lg text-sm font-semibold disabled:opacity-60">
+                {verifyingTx ? 'Verifying...' : 'Verify'}
+              </button>
+            </div>
+
+            {scanResult && (
+              <div className="p-4 rounded-xl bg-surface border border-border/50 space-y-1">
+                <p className="text-sm font-bold text-shg-secondary">Verification Successful</p>
+                <p className="text-xs text-muted-foreground">TX: {scanResult.txHash}</p>
+                <p className="text-xs text-muted-foreground">Block: {scanResult.block}</p>
+                <a href={scanResult.explorer} target="_blank" rel="noreferrer" className="text-xs font-semibold text-shg-primary hover:underline">Open AlgoExplorer</a>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

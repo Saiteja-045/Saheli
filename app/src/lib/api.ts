@@ -85,7 +85,16 @@ export const aiAgentApi = {
 // ─── QR Code ──────────────────────────────────────────────────────────────────
 
 export const qrApi = {
-  generate: (body: { txHash?: string; memberId?: string; memberName?: string; amount?: number; type?: string }) =>
+  generate: (body: {
+    txHash?: string;
+    memberId?: string;
+    memberName?: string;
+    memberPhone?: string;
+    amount?: number;
+    type?: string;
+    walletAddress?: string;
+    autoSendWhatsApp?: boolean;
+  }) =>
     apiFetch<any>('/qr/generate', { method: 'POST', body: JSON.stringify(body) }),
   verify: (txHash: string) => apiFetch<any>(`/qr/verify/${txHash}`),
 };
@@ -97,6 +106,7 @@ export const statsApi = {
   getInstitutional: () => apiFetch<any>('/stats/institutional'),
   getSHGDirectory: () => apiFetch<any[]>('/stats/shg-directory'),
   getLedger: () => apiFetch<any[]>('/stats/ledger'),
+  approveGrant: () => apiFetch<any>('/stats/grants/approve', { method: 'POST', body: JSON.stringify({}) }),
 };
 
 // ─── Autonomous Agent ─────────────────────────────────────────────────────────

@@ -24,18 +24,34 @@ gsap.registerPlugin(ScrollTrigger);
 
 type UserRole = 'member' | 'leader' | 'bank';
 type AppView = 'landing' | 'auth' | 'dashboard';
+type DashboardSection =
+  | 'passport'
+  | 'treasury'
+  | 'audit'
+  | 'ai'
+  | 'auto-repayment'
+  | 'scanner'
+  | 'grants'
+  | 'settings'
+  | 'support';
+
+function getDefaultSection(role: UserRole): DashboardSection {
+  if (role === 'member') return 'passport';
+  if (role === 'leader') return 'treasury';
+  return 'scanner';
+}
 
 function App() {
   const { user, loading, logout } = useAuth();
-  const [currentRole, setCurrentRole] = useState<UserRole>('member');
   const [view, setView] = useState<AppView>('landing');
   const [showWhatsAppDemo, setShowWhatsAppDemo] = useState(false);
+  const [activeSection, setActiveSection] = useState<DashboardSection>('passport');
 
   useEffect(() => {
     if (loading) return;
     if (user) {
       // Authenticated — go straight to their dashboard
-      setCurrentRole(user.role as UserRole);
+      setActiveSection(getDefaultSection(user.role as UserRole));
       setView('dashboard');
     } else {
       // No JWT session → always show auth page
@@ -48,7 +64,7 @@ function App() {
   }, [view]);
 
   const handleAuthSuccess = (role: UserRole) => {
-    setCurrentRole(role);
+    setActiveSection(getDefaultSection(role));
     setView('dashboard');
   };
 
@@ -56,10 +72,10 @@ function App() {
     setView('auth');
   };
 
-  const handleSwitchPersona = () => {
+  const handleSignOut = () => {
     logout();
     localStorage.removeItem('shg-role');
-    setView('landing');
+    setView('auth');
   };
 
   if (loading) {
@@ -84,9 +100,7 @@ function App() {
 
   if (view === 'dashboard') {
     const authRole = user?.role as 'member' | 'leader' | 'bank' | undefined;
-    // Members cannot access bank dashboard at all
-    const safeRole = authRole === 'member' && currentRole === 'bank' ? 'member' : currentRole;
-    const isReadOnly = authRole === 'member' && safeRole === 'leader';
+    const safeRole = (authRole || 'member') as UserRole;
 
     return (
       <div className="min-h-screen bg-surface">
@@ -94,14 +108,23 @@ function App() {
         <TopNav
           currentRole={safeRole}
           authRole={authRole}
-          onRoleChange={setCurrentRole}
-          onSwitchPersona={handleSwitchPersona}
+          onOpenAIAssistant={() => setShowWhatsAppDemo(true)}
+          onSignOut={handleSignOut}
         />
-        <Sidebar currentRole={safeRole} />
+        <Sidebar
+          currentRole={safeRole}
+          activeSection={activeSection}
+          onSectionChange={setActiveSection}
+        />
         <main className="lg:ml-64 pt-16 min-h-screen">
-          {safeRole === 'member' && <MemberDashboard />}
-          {safeRole === 'leader' && <LeaderDashboard isReadOnly={isReadOnly} />}
-          {safeRole === 'bank' && authRole !== 'member' && <BankDashboard />}
+          {safeRole === 'member' && (
+            <MemberDashboard
+              activeSection={activeSection}
+              onOpenAIAssistant={() => setShowWhatsAppDemo(true)}
+            />
+          )}
+          {safeRole === 'leader' && <LeaderDashboard activeSection={activeSection} isReadOnly={false} />}
+          {safeRole === 'bank' && <BankDashboard activeSection={activeSection} />}
         </main>
         {showWhatsAppDemo && <WhatsAppDemo onClose={() => setShowWhatsAppDemo(false)} />}
       </div>

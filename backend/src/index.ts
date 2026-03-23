@@ -21,6 +21,61 @@ import agentRouter from './routes/agent';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+function escapeXml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function buildTwimlMessage(message: string) {
+  const safe = escapeXml(message).slice(0, 1500);
+  return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${safe}</Message></Response>`;
+}
+
+async function transcribeTwilioAudio(mediaUrl: string, contentType?: string): Promise<string | null> {
+  const openAiKey = process.env.OPENAI_API_KEY;
+  if (!openAiKey || !mediaUrl) {
+    return null;
+  }
+
+  try {
+    const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+    const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+    const authHeaders: Record<string, string> = {};
+    if (twilioSid && twilioToken) {
+      authHeaders.Authorization = `Basic ${Buffer.from(`${twilioSid}:${twilioToken}`).toString('base64')}`;
+    }
+
+    const mediaRes = await fetch(mediaUrl, { headers: authHeaders });
+    if (!mediaRes.ok) {
+      return null;
+    }
+
+    const audioBuffer = Buffer.from(await mediaRes.arrayBuffer());
+    const form = new FormData();
+    form.append('model', 'whisper-1');
+    form.append('file', new Blob([audioBuffer], { type: contentType || 'audio/ogg' }), 'voice-note.ogg');
+
+    const transcribeRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${openAiKey}` },
+      body: form,
+    });
+
+    if (!transcribeRes.ok) {
+      return null;
+    }
+
+    const json = await transcribeRes.json() as { text?: string };
+    return json.text?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(cors({
   origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000'],
@@ -77,12 +132,59 @@ app.get('/health', (_req, res) => {
 });
 
 // ─── Twilio WhatsApp Webhook (for production integration) ─────────────────
-app.post('/webhook/whatsapp', (req, res) => {
-  const { Body, From } = req.body;
-  console.log(`[WhatsApp Webhook] From: ${From} | Message: ${Body}`);
-  // In production: parse intent via /api/ai-agent/chat and send Twilio reply
+app.post('/webhook/whatsapp', async (req, res) => {
+  const {
+    Body,
+    From,
+    ProfileName,
+    NumMedia,
+    MediaUrl0,
+    MediaContentType0,
+  } = req.body;
+
+  let incomingMessage: string = (Body || '').trim();
+  const hasAudio = Number(NumMedia || 0) > 0 && /^audio\//i.test(MediaContentType0 || '');
+
+  if (!incomingMessage && hasAudio) {
+    const transcript = await transcribeTwilioAudio(MediaUrl0, MediaContentType0);
+    if (transcript) {
+      incomingMessage = transcript;
+    }
+  }
+
+  if (!incomingMessage) {
+    res.set('Content-Type', 'text/xml');
+    res.send(buildTwimlMessage('I received your voice note, but transcription is unavailable right now. Please send the request as text or configure OPENAI_API_KEY for voice support.'));
+    return;
+  }
+
+  console.log(`[WhatsApp Webhook] From: ${From} | Message: ${incomingMessage}`);
+
+  let reply = 'Processing your request...';
+  try {
+    const aiRes = await fetch(`http://127.0.0.1:${PORT}/api/ai-agent/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: incomingMessage,
+        memberName: ProfileName || 'SHG Member',
+      }),
+    });
+    const json = await aiRes.json() as any;
+    const agentData = json?.data;
+    if (agentData?.reply) {
+      reply = agentData.reply;
+      if (agentData.txHash) {
+        reply += `\n\nTX: ${agentData.txHash}`;
+        reply += `\nVerify: https://testnet.algoexplorer.io/tx/${agentData.txHash}`;
+      }
+    }
+  } catch {
+    reply = 'Service temporarily unavailable. Please try again in a few moments.';
+  }
+
   res.set('Content-Type', 'text/xml');
-  res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Message>Processing your request...</Message></Response>`);
+  res.send(buildTwimlMessage(reply));
 });
 
 // ─── 404 Handler ────────────────────────────────────────────────────────────

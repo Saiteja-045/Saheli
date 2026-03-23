@@ -17,6 +17,11 @@ import {
   QrCode,
   CalendarClock,
   ArrowRight,
+  LifeBuoy,
+  Bell,
+  MessageSquare,
+  Globe,
+  Save,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
@@ -26,20 +31,32 @@ import QRCodeDisplay from '../components/QRCodeDisplay';
 import LoanRequestModal from '../components/LoanRequestModal';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
+import { useWallet } from '../contexts/WalletContext';
 
 // Skeleton loader
 const Skeleton = ({ className = '' }: { className?: string }) => (
   <div className={`bg-surface animate-pulse rounded-lg ${className}`} />
 );
 
-export default function MemberDashboard() {
+interface MemberDashboardProps {
+  activeSection?: string;
+  onOpenAIAssistant?: () => void;
+}
+
+export default function MemberDashboard({ activeSection = 'passport', onOpenAIAssistant }: MemberDashboardProps) {
   const dashboardRef = useRef<HTMLDivElement>(null);
   const [showLoanModal, setShowLoanModal] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [qrData, setQrData] = useState<any>(null);
   const [generatingQR, setGeneratingQR] = useState(false);
+  const [settings, setSettings] = useState({
+    language: 'English',
+    whatsappAlerts: true,
+    weeklyDigest: true,
+  });
 
   const { user } = useAuth();
+  const { accountAddress } = useWallet();
   const memberId = user?._id || 'm1'; // fallback to m1 only if no user (shouldn't happen)
 
   const { data: rawMember, loading, error } = useApiFetch(() => membersApi.getById(memberId));
@@ -75,10 +92,23 @@ export default function MemberDashboard() {
   const handleGenerateQR = async () => {
     setGeneratingQR(true);
     try {
-      const qr = await qrApi.generate({ memberId: memberId, memberName: member?.name, type: 'identity' });
+      const qr = await qrApi.generate({
+        memberId: memberId,
+        memberName: member?.name,
+        memberPhone: user?.phone,
+        type: 'identity',
+        walletAddress: accountAddress || undefined,
+        autoSendWhatsApp: true,
+      });
       setQrData(qr);
       setShowQR(true);
-      toast.success('QR Proof generated!');
+      if (qr?.whatsapp?.sent) {
+        toast.success('QR generated and sent to your WhatsApp');
+      } else if (qr?.whatsapp?.attempted && !qr?.whatsapp?.sent) {
+        toast.warning(`QR generated, but WhatsApp send failed: ${qr?.whatsapp?.error || 'check Twilio/Cloudinary config'}`);
+      } else {
+        toast.success('QR Proof generated!');
+      }
     } catch {
       toast.error('Could not generate QR — is the API running?');
     }
@@ -94,6 +124,170 @@ export default function MemberDashboard() {
           Start the Saheli API server: <code className="bg-surface px-2 py-1 rounded text-xs">cd backend && npm run dev</code>
         </p>
         <p className="text-xs text-muted-foreground mt-4 bg-surface px-4 py-2 rounded-lg font-mono">{error}</p>
+      </div>
+    );
+  }
+
+  if (activeSection === 'ai') {
+    return (
+      <div className="p-6 lg:p-10 max-w-5xl mx-auto space-y-6">
+        <div className="bg-white border border-border/50 rounded-2xl p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-shg-primary mb-2">AI Assistant</p>
+              <h2 className="text-2xl font-black font-headline text-on-surface">WhatsApp + Voice Agent</h2>
+              <p className="text-sm text-muted-foreground mt-2 max-w-xl">
+                Use the live assistant to request loans, check balances, and generate blockchain QR proof in natural language.
+              </p>
+            </div>
+            <button
+              onClick={onOpenAIAssistant}
+              className="px-5 py-2.5 bg-shg-primary text-white rounded-xl font-semibold text-sm flex items-center gap-2 hover:opacity-90"
+            >
+              <MessageSquare className="w-4 h-4" />
+              Open Assistant
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-br from-navy to-navy-light text-white rounded-2xl p-6 border border-border/50">
+          <h3 className="font-bold mb-3">Agent Status</h3>
+          <p className="text-sm text-white/75">
+            AI loan evaluator and repayment scheduler are active. Notifications are synced from on-chain events and WhatsApp commands.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeSection === 'auto-repayment') {
+    return (
+      <div className="p-6 lg:p-10 max-w-5xl mx-auto space-y-6">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-shg-primary mb-2">Repayment Center</p>
+          <h2 className="text-2xl font-black font-headline text-on-surface">Auto-Repayment Schedule</h2>
+        </div>
+
+        <div className="bg-white border border-border/50 rounded-2xl p-6">
+          {!repayments || repayments.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No active repayment schedules yet.</p>
+          ) : (
+            <div className="space-y-4">
+              {repayments.map((r: any) => (
+                <div key={r.loanId} className="p-4 bg-surface rounded-xl border border-border/40">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-bold text-on-surface">{r.memberName}</p>
+                      <p className="text-xs text-muted-foreground">{r.paidInstallments}/{r.totalInstallments} installments paid</p>
+                    </div>
+                    <p className="text-sm font-black text-shg-primary">₹{r.installmentAmount?.toLocaleString('en-IN')}/mo</p>
+                  </div>
+                  <div className="w-full bg-border/30 h-2 rounded-full overflow-hidden mt-3">
+                    <div
+                      className="h-full bg-shg-primary rounded-full"
+                      style={{ width: `${(r.paidInstallments / r.totalInstallments) * 100}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Next deduction on {new Date(r.nextDueDate).toLocaleDateString('en-IN')} from {r.deductionSource === 'future_deposit' ? 'future deposit' : 'yield share'}.
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (activeSection === 'settings') {
+    return (
+      <div className="p-6 lg:p-10 max-w-4xl mx-auto space-y-6">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-shg-primary mb-2">Preferences</p>
+          <h2 className="text-2xl font-black font-headline text-on-surface">Settings</h2>
+        </div>
+        <div className="bg-white border border-border/50 rounded-2xl p-6 space-y-5">
+          <div>
+            <label className="text-xs font-bold uppercase text-muted-foreground">Preferred Language</label>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {['English', 'Hindi', 'Telugu'].map((lang) => (
+                <button
+                  key={lang}
+                  onClick={() => setSettings((s) => ({ ...s, language: lang }))}
+                  className={`py-2 rounded-lg border text-sm font-semibold ${settings.language === lang ? 'bg-shg-primary text-white border-shg-primary' : 'border-border hover:bg-surface'}`}
+                >
+                  <span className="inline-flex items-center gap-1">
+                    <Globe className="w-3.5 h-3.5" />
+                    {lang}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between p-4 bg-surface rounded-xl">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <Bell className="w-4 h-4 text-shg-primary" />
+              WhatsApp Alerts
+            </div>
+            <button
+              onClick={() => setSettings((s) => ({ ...s, whatsappAlerts: !s.whatsappAlerts }))}
+              className={`w-12 h-6 rounded-full transition-colors ${settings.whatsappAlerts ? 'bg-shg-primary' : 'bg-border'}`}
+            >
+              <span className={`block w-5 h-5 bg-white rounded-full transition-transform ${settings.whatsappAlerts ? 'translate-x-6' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between p-4 bg-surface rounded-xl">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <CalendarClock className="w-4 h-4 text-shg-primary" />
+              Weekly Financial Digest
+            </div>
+            <button
+              onClick={() => setSettings((s) => ({ ...s, weeklyDigest: !s.weeklyDigest }))}
+              className={`w-12 h-6 rounded-full transition-colors ${settings.weeklyDigest ? 'bg-shg-primary' : 'bg-border'}`}
+            >
+              <span className={`block w-5 h-5 bg-white rounded-full transition-transform ${settings.weeklyDigest ? 'translate-x-6' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+
+          <button
+            onClick={() => toast.success('Settings saved successfully')}
+            className="px-5 py-2.5 bg-shg-primary text-white rounded-xl font-semibold text-sm inline-flex items-center gap-2"
+          >
+            <Save className="w-4 h-4" />
+            Save Preferences
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeSection === 'support') {
+    return (
+      <div className="p-6 lg:p-10 max-w-4xl mx-auto space-y-6">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-shg-primary mb-2">Help Center</p>
+          <h2 className="text-2xl font-black font-headline text-on-surface">Support</h2>
+        </div>
+        <div className="bg-white border border-border/50 rounded-2xl p-6 space-y-4">
+          <div className="p-4 rounded-xl bg-surface border border-border/50">
+            <p className="text-sm font-semibold text-on-surface">WhatsApp Support</p>
+            <p className="text-xs text-muted-foreground mt-1">Message "HELP" to your Saheli WhatsApp bot for guided support in your language.</p>
+          </div>
+          <div className="p-4 rounded-xl bg-surface border border-border/50">
+            <p className="text-sm font-semibold text-on-surface">SHG Leader Escalation</p>
+            <p className="text-xs text-muted-foreground mt-1">Loan and payment disputes are escalated to your SHG leader with on-chain references.</p>
+          </div>
+          <button
+            onClick={() => toast.success('Support ticket created. We will contact you on WhatsApp shortly.')}
+            className="px-5 py-2.5 bg-shg-primary text-white rounded-xl font-semibold text-sm inline-flex items-center gap-2"
+          >
+            <LifeBuoy className="w-4 h-4" />
+            Raise Support Ticket
+          </button>
+        </div>
       </div>
     );
   }
@@ -307,6 +501,7 @@ export default function MemberDashboard() {
                 txHash={qrData.txHash}
                 explorerUrl={qrData.explorerUrl}
                 memberName={member?.name}
+                walletDeepLink={qrData.walletDeepLink}
                 compact={true}
               />
             ) : (
