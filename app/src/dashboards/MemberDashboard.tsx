@@ -25,6 +25,7 @@ import { membersApi, qrApi, agentApi } from '../lib/api';
 import QRCodeDisplay from '../components/QRCodeDisplay';
 import LoanRequestModal from '../components/LoanRequestModal';
 import { toast } from 'sonner';
+import { useAuth } from '../contexts/AuthContext';
 
 // Skeleton loader
 const Skeleton = ({ className = '' }: { className?: string }) => (
@@ -38,8 +39,27 @@ export default function MemberDashboard() {
   const [qrData, setQrData] = useState<any>(null);
   const [generatingQR, setGeneratingQR] = useState(false);
 
-  const { data: member, loading, error } = useApiFetch(() => membersApi.getById('m1'));
+  const { user } = useAuth();
+  const memberId = user?._id || 'm1'; // fallback to m1 only if no user (shouldn't happen)
+
+  const { data: rawMember, loading, error } = useApiFetch(() => membersApi.getById(memberId));
   const { data: repayments } = useApiFetch(() => agentApi.getRepayments());
+
+  // If it's a real MongoDB user newly registered, they might lack these fields from mockData
+  const member = rawMember ? {
+    ...rawMember,
+    did: rawMember.did || `did:algo:${rawMember._id?.slice(0, 8) || 'new'}`,
+    repaymentRate: rawMember.repaymentRate ?? 100,
+    trustScore: rawMember.trustScore ?? 500,
+    trustGrade: rawMember.trustGrade || 'New Member',
+    totalSavings: rawMember.totalSavings ?? 0,
+    activeLoans: rawMember.activeLoans ?? 0,
+    activeLoansAmount: rawMember.activeLoansAmount ?? 0,
+    yieldEarned: rawMember.yieldEarned ?? 0,
+    transactions: rawMember.transactions || [],
+    badges: rawMember.badges || ['New Member'],
+  } : null;
+
 
   useEffect(() => {
     if (!loading && member) {
@@ -55,7 +75,7 @@ export default function MemberDashboard() {
   const handleGenerateQR = async () => {
     setGeneratingQR(true);
     try {
-      const qr = await qrApi.generate({ memberId: 'm1', memberName: member?.name, type: 'identity' });
+      const qr = await qrApi.generate({ memberId: memberId, memberName: member?.name, type: 'identity' });
       setQrData(qr);
       setShowQR(true);
       toast.success('QR Proof generated!');
@@ -416,7 +436,7 @@ export default function MemberDashboard() {
       {showLoanModal && (
         <LoanRequestModal
           onClose={() => setShowLoanModal(false)}
-          memberId="m1"
+          memberId={memberId}
           memberName={member?.name}
           trustScore={member?.trustScore}
         />

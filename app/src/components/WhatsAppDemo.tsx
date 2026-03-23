@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Brain, Mic, Send, X, MessageCircle, Zap, QrCode } from 'lucide-react';
 import { aiAgentApi, qrApi } from '../lib/api';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Message {
   id: string;
@@ -26,13 +27,16 @@ export default function WhatsAppDemo({ onClose }: { onClose?: () => void }) {
     {
       id: 'welcome',
       type: 'bot',
-      content: '👋 Namaste! I\'m your SHG Chain AI Agent.\n\nYou can say:\n• "Deposit 500 rupees"\n• "I need a loan for ₹5000"\n• "My balance"\n• "Generate QR proof"\n\nI understand Hindi too! 🇮🇳',
+      content: '👋 Namaste! I\'m your Saheli AI Agent.\n\nYou can say:\n• "Deposit 500 rupees"\n• "I need a loan for ₹5000"\n• "My balance"\n• "Generate QR proof"\n\nI understand Hindi too! 🇮🇳',
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { user } = useAuth();
+  const memberId = user?._id || 'm1';
+  const memberName = user?.name || 'Lakshmi Devi';
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -64,8 +68,8 @@ export default function WhatsAppDemo({ onClose }: { onClose?: () => void }) {
     try {
       const response = await aiAgentApi.chat({
         message: text,
-        memberId: 'm1',
-        memberName: 'Lakshmi',
+        memberId,
+        memberName,
       });
 
       // Generate QR if needed
@@ -74,8 +78,8 @@ export default function WhatsAppDemo({ onClose }: { onClose?: () => void }) {
         try {
           qrData = await qrApi.generate({
             txHash: response.txHash,
-            memberId: 'm1',
-            memberName: 'Lakshmi Devi',
+            memberId,
+            memberName,
             amount: response.amount,
             type: response.action,
           });
@@ -115,7 +119,7 @@ export default function WhatsAppDemo({ onClose }: { onClose?: () => void }) {
             <MessageCircle className="w-5 h-5 text-white" />
           </div>
           <div className="flex-1">
-            <p className="text-white font-bold text-sm">SHG Chain Bot</p>
+            <p className="text-white font-bold text-sm">Saheli Bot</p>
             <div className="flex items-center gap-1">
               <span className="w-2 h-2 bg-[#25d366] rounded-full" />
               <p className="text-white/70 text-xs">Powered by AI Agent</p>

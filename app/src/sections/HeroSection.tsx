@@ -67,7 +67,7 @@ export default function HeroSection({ onRoleSelect, onOpenWhatsApp }: HeroSectio
           {/* Sidebar */}
           <div className="hero-sidebar hidden lg:block w-64 bg-white rounded-2xl shadow-card p-6 h-[calc(100vh-8rem)] sticky top-24">
             <div className="mb-8">
-              <h2 className="font-headline text-2xl font-black text-shg-primary">SHG Chain</h2>
+              <h2 className="font-headline text-2xl font-black text-shg-primary">Saheli</h2>
               <p className="text-xs text-muted-foreground mt-1">Empowering Rural Finance</p>
             </div>
             <nav className="space-y-2">

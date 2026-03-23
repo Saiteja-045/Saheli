@@ -71,7 +71,7 @@ export default function WhatsAppSection({ onTryDemo }: { onTryDemo?: () => void 
                   <MessageCircle className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <p className="text-white font-bold text-sm">SHG Chain Bot</p>
+                  <p className="text-white font-bold text-sm">Saheli Bot</p>
                   <p className="text-white/70 text-xs">Online</p>
                 </div>
               </div>

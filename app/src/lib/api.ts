@@ -1,13 +1,16 @@
-// ─── API Client for Saheli SHG Chain ─────────────────────────────────────────
+// ─── API Client for Saheli Saheli ─────────────────────────────────────────
 // All backend calls go through this typed client.
 
 const BASE_URL = '/api'; // Vite proxy handles this → http://localhost:3001
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = localStorage.getItem('saheli-token');
+  
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options?.headers,
     },
   });
@@ -20,6 +23,16 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const json = await res.json();
   return json.data;
 }
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
+export const authApi = {
+  login: (phone: string, password: string) =>
+    apiFetch<any>('/auth/login', { method: 'POST', body: JSON.stringify({ phone, password }) }),
+  register: (body: { name: string; phone: string; password: string; role: string; shgId?: string }) =>
+    apiFetch<any>('/auth/register', { method: 'POST', body: JSON.stringify(body) }),
+  profile: () => apiFetch<any>('/auth/profile'),
+};
 
 // ─── Members ──────────────────────────────────────────────────────────────────
 

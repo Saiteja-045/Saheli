@@ -74,7 +74,7 @@ export default function ImpactMetrics() {
             Built for Scale. Designed for Trust.
           </h2>
           <p className="text-muted-foreground max-w-2xl mx-auto">
-            From village groups to regional institutions—SHG Chain keeps finance transparent, auditable, and accessible.
+            From village groups to regional institutions—Saheli keeps finance transparent, auditable, and accessible.
           </p>
         </div>
 

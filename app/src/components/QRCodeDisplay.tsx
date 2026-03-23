@@ -107,7 +107,7 @@ export default function QRCodeDisplay({
         <button
           onClick={() => {
             if (navigator.share) {
-              navigator.share({ title: 'SHG Chain Proof', text: `TX: ${txHash}`, url: explorerUrl });
+              navigator.share({ title: 'Saheli Proof', text: `TX: ${txHash}`, url: explorerUrl });
             }
           }}
           className="flex items-center justify-center gap-2 px-3 py-2.5 border border-border rounded-xl text-sm font-semibold hover:bg-surface transition-colors"

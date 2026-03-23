@@ -13,7 +13,7 @@ router.post('/generate', async (req: Request, res: Response) => {
 
     // Build the QR payload — this is what gets embedded in the QR code
     const qrPayload = JSON.stringify({
-      platform: 'SHG Chain',
+      platform: 'Saheli',
       network: 'Algorand Testnet',
       txHash: hash,
       memberId: memberId || 'm1',

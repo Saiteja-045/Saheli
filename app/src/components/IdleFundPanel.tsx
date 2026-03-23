@@ -214,12 +214,8 @@ export default function IdleFundPanel({
         <button
           onClick={handleHarvest}
           disabled={harvesting || loading || (vaultData?.pendingYield || 0) < 1}
-          className="flex-1 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
-          style={{
-            background: 'linear-gradient(135deg, #10b98120, #059669 30%)',
-            color: '#059669',
-            border: '1px solid #10b98140',
-          }}
+          className="flex-1 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 text-white transition-all active:scale-95 disabled:opacity-50"
+          style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
         >
           {harvesting ? (
             <><Loader2 className="w-4 h-4 animate-spin" /> Harvesting...</>

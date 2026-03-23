@@ -135,7 +135,7 @@ function buildAgentResponse(intent: ReturnType<typeof parseIntent>, memberName =
       };
     default:
       return {
-        reply: `👋 Namaste! I'm your SHG Chain AI Agent.\n\nYou can say:\n• *"Deposit 500 rupees"*\n• *"I need a loan for ₹5000"*\n• *"My balance"*\n• *"Generate QR proof"*\n\n_I understand Hindi, Kannada, and Telugu too!_ 🇮🇳`,
+        reply: `👋 Namaste! I'm your Saheli AI Agent.\n\nYou can say:\n• *"Deposit 500 rupees"*\n• *"I need a loan for ₹5000"*\n• *"My balance"*\n• *"Generate QR proof"*\n\n_I understand Hindi, Kannada, and Telugu too!_ 🇮🇳`,
       };
   }
 }
