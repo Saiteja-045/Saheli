@@ -275,13 +275,3 @@ npm run build
 ## Pitch Positioning (Suggested)
 
 "We made Web3 invisible. Rural women interact via WhatsApp voice/text, while institutions get auditable on-chain proofs, governed approvals, and AI-assisted treasury intelligence."
-
-## Team Notes
-
-If you are presenting this project live:
-- Keep backend and frontend pre-warmed before demo
-- Seed demo users before judge login walkthrough
-- Keep Twilio and Cloudinary credentials validated in advance
-- Use the member QR generation flow to showcase instant WhatsApp proof delivery
-
-
