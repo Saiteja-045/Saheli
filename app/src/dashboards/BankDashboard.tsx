@@ -6,11 +6,14 @@ import {
   Search,
   Landmark,
   Activity,
+  Eye,
+  Send,
 } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { gsap } from 'gsap';
-import { useApiFetch, useApiPolling } from '../hooks/useApi';
-import { statsApi } from '../lib/api';
+import { useApiFetch, useApiPolling, useApiMutation } from '../hooks/useApi';
+import { statsApi, loansApi } from '../lib/api';
+import { toast } from 'sonner';
 
 const Skeleton = ({ className = '' }: { className?: string }) => (
   <div className={`bg-surface animate-pulse rounded-lg ${className}`} />
@@ -23,12 +26,14 @@ function timeAgo(ts: string) {
   return `${Math.floor(diff / 3600000)}+ hours ago`;
 }
 
-export default function BankDashboard() {
+export default function BankDashboard({ isReadOnly = false }: { isReadOnly?: boolean }) {
   const dashboardRef = useRef<HTMLDivElement>(null);
 
   const { data: stats, loading: loadingStats } = useApiFetch(() => statsApi.getInstitutional());
   const { data: shgDirectory, loading: loadingDirectory } = useApiFetch(() => statsApi.getSHGDirectory());
   const { data: ledger } = useApiPolling(() => statsApi.getLedger(), 6000);
+  const { data: bankQueue, loading: loadingQueue, refetch: refetchBankQueue } = useApiPolling(() => loansApi.getBankQueue(), 5000);
+  const { mutate: processBankQueue, loading: processingQueue } = useApiMutation((id: string) => loansApi.processBankQueue(id, 'BANK_DASHBOARD'));
 
   useEffect(() => {
     if (!loadingStats) {
@@ -43,6 +48,16 @@ export default function BankDashboard() {
     { month: 'Jan', pct: 40 }, { month: 'Feb', pct: 55 }, { month: 'Mar', pct: 45 },
     { month: 'Apr', pct: 70 }, { month: 'May', pct: 85 }, { month: 'Jun', pct: 95 },
   ];
+
+  const handleProcessDisbursement = async (id: string) => {
+    try {
+      const res = await processBankQueue(id);
+      toast.success(res.message || 'Bank payout processed');
+      refetchBankQueue();
+    } catch {
+      toast.error('Could not process bank payout');
+    }
+  };
 
   return (
     <div ref={dashboardRef} className="p-6 lg:p-10 max-w-7xl mx-auto">
@@ -77,6 +92,12 @@ export default function BankDashboard() {
             </div>
           </div>
         </div>
+        {isReadOnly && (
+          <div className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-sm font-semibold">
+            <Eye className="w-4 h-4" />
+            Leader read-only mode: editing and approval actions are disabled on this dashboard.
+          </div>
+        )}
       </header>
 
       {/* Bento Grid */}
@@ -92,7 +113,10 @@ export default function BankDashboard() {
             <p className="text-sm text-muted-foreground mb-5 px-2">
               Scan the member's Physical d-SBT card to fetch immutable credit history from the ledger.
             </p>
-            <button className="px-6 py-2.5 bg-shg-primary text-white rounded-full font-bold text-sm hover:shadow-lg transition-all active:scale-95">
+            <button
+              disabled={isReadOnly}
+              className="px-6 py-2.5 bg-shg-primary text-white rounded-full font-bold text-sm hover:shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               Launch Scanner
             </button>
           </div>
@@ -143,7 +167,10 @@ export default function BankDashboard() {
                 )}
               </div>
             </div>
-            <button className="bg-shg-secondary text-white px-5 py-2.5 rounded-full font-bold text-sm flex items-center gap-2 hover:opacity-90 transition-opacity shadow-md active:scale-95">
+            <button
+              disabled={isReadOnly}
+              className="bg-shg-secondary text-white px-5 py-2.5 rounded-full font-bold text-sm flex items-center gap-2 hover:opacity-90 transition-opacity shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               <CheckCircle2 className="w-4 h-4" />
               1-Click Grant Approval
             </button>
@@ -160,8 +187,18 @@ export default function BankDashboard() {
               )}
             </h3>
             <div className="flex gap-2">
-              <button className="p-2 hover:bg-surface rounded-lg transition-colors"><Filter className="w-5 h-5 text-muted-foreground" /></button>
-              <button className="p-2 hover:bg-surface rounded-lg transition-colors"><Download className="w-5 h-5 text-muted-foreground" /></button>
+              <button
+                disabled={isReadOnly}
+                className="p-2 hover:bg-surface rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Filter className="w-5 h-5 text-muted-foreground" />
+              </button>
+              <button
+                disabled={isReadOnly}
+                className="p-2 hover:bg-surface rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Download className="w-5 h-5 text-muted-foreground" />
+              </button>
             </div>
           </div>
           <div className="overflow-x-auto">
@@ -227,7 +264,10 @@ export default function BankDashboard() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button className="text-shg-primary font-bold text-sm hover:underline flex items-center gap-1 ml-auto">
+                      <button
+                        disabled={isReadOnly}
+                        className="text-shg-primary font-bold text-sm hover:underline flex items-center gap-1 ml-auto disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
+                      >
                         <Search className="w-3 h-3" />
                         Review Ledger
                       </button>
@@ -308,6 +348,63 @@ export default function BankDashboard() {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* Bank Disbursement Queue */}
+        <div className="lg:col-span-12 dashboard-card bg-white rounded-2xl p-6 border border-border/50">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-bold font-headline">Bank Disbursement Queue</h3>
+              <p className="text-xs text-muted-foreground">Leader-approved loans forwarded for payout</p>
+            </div>
+            {!loadingQueue && (
+              <span className="text-xs font-bold px-3 py-1 rounded-full bg-shg-primary/10 text-shg-primary">
+                {(bankQueue || []).filter((q: any) => q.status === 'pending').length} pending
+              </span>
+            )}
+          </div>
+
+          {loadingQueue ? (
+            <div className="space-y-3">
+              {[1, 2].map(i => <Skeleton key={i} className="h-16 w-full" />)}
+            </div>
+          ) : (bankQueue || []).length === 0 ? (
+            <p className="text-sm text-muted-foreground">No disbursements in queue.</p>
+          ) : (
+            <div className="space-y-3">
+              {(bankQueue || []).slice(0, 8).map((item: any) => (
+                <div key={item._id} className="p-4 rounded-xl border border-border/50 flex flex-col md:flex-row md:items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm text-on-surface truncate">
+                      {item.user?.name || item.loan?.user?.name || 'Member'} · ₹{item.amount?.toLocaleString('en-IN')}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      Loan #{String(item.loan?._id || item.loan).slice(-6).toUpperCase()} · queued {timeAgo(item.queuedAt)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                      item.status === 'approved'
+                        ? 'bg-shg-secondary/10 text-shg-secondary'
+                        : item.status === 'rejected'
+                          ? 'bg-shg-error/10 text-shg-error'
+                          : 'bg-shg-tertiary/10 text-shg-tertiary'
+                    }`}>
+                      {String(item.status).toUpperCase()}
+                    </span>
+                    <button
+                      disabled={isReadOnly || processingQueue || item.status !== 'pending'}
+                      onClick={() => handleProcessDisbursement(item._id)}
+                      className="px-3 py-2 rounded-lg bg-shg-primary text-white text-xs font-bold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                    >
+                      <Send className="w-3 h-3" />
+                      Process Payout
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

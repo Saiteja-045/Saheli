@@ -2,48 +2,47 @@ import { useEffect, useRef } from 'react';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { Brain, CheckCircle2, Zap, AlertTriangle, Clock, ArrowRight } from 'lucide-react';
+import { useApiFetch } from '../hooks/useApi';
+import { aiAgentApi } from '../lib/api';
 
 gsap.registerPlugin(ScrollTrigger);
 
-const logs = [
-  {
-    icon: CheckCircle2,
-    iconColor: 'text-shg-secondary',
-    title: 'Deployed ₹50,000 to Folks Finance',
-    highlight: '4.2% yield',
-    time: '2 mins ago'
-  },
-  {
-    icon: Zap,
-    iconColor: 'text-shg-primary',
-    title: 'Auto-approved ₹500 loan for Sita',
-    highlight: 'Score: 98/100',
-    time: '15 mins ago'
-  },
-  {
-    icon: AlertTriangle,
-    iconColor: 'text-shg-tertiary',
-    title: 'Yield Alert: Liquidity dipped below 20%',
-    highlight: 'Moving ₹10k from reserve',
-    time: '1 hour ago'
-  },
-  {
-    icon: Clock,
-    iconColor: 'text-muted-foreground',
-    title: 'Sync complete',
-    highlight: 'Village node #02 validated',
-    time: '4 hours ago'
-  }
-];
-
-const actions = [
+const fallbackActions = [
   { title: 'Reserve funds for upcoming repayment', status: 'Scheduled', statusColor: 'bg-shg-primary/10 text-shg-primary' },
   { title: 'Rebalance to higher yield vault', status: 'Pending approval', statusColor: 'bg-shg-tertiary/10 text-shg-tertiary' },
   { title: 'Notify members with low balance', status: 'Completed', statusColor: 'bg-shg-secondary/10 text-shg-secondary' },
 ];
 
+const iconMap: Record<string, any> = {
+  CheckCircle2,
+  Zap,
+  AlertTriangle,
+  Clock,
+};
+
+function timeAgo(ts: string) {
+  const diff = Date.now() - new Date(ts).getTime();
+  if (diff < 60000) return 'Just now';
+  if (diff < 3600000) return `${Math.floor(diff / 60000)} mins ago`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)} hours ago`;
+  return `${Math.floor(diff / 86400000)} days ago`;
+}
+
 export default function AIAgentSection() {
   const sectionRef = useRef<HTMLDivElement>(null);
+  const { data: logsData } = useApiFetch(() => aiAgentApi.getLog());
+  const { data: insights } = useApiFetch(() => aiAgentApi.getInsights());
+
+  const logs = (logsData || []).slice(0, 4);
+  const actions = (insights?.insights || []).slice(0, 3).map((insight: any) => ({
+    title: insight.title,
+    status: insight.priority === 'high' ? 'Scheduled' : insight.priority === 'medium' ? 'Pending approval' : 'Completed',
+    statusColor: insight.priority === 'high'
+      ? 'bg-shg-primary/10 text-shg-primary'
+      : insight.priority === 'medium'
+        ? 'bg-shg-tertiary/10 text-shg-tertiary'
+        : 'bg-shg-secondary/10 text-shg-secondary',
+  }));
 
   useEffect(() => {
     const ctx = gsap.context(() => {
@@ -115,10 +114,19 @@ export default function AIAgentSection() {
             </div>
 
             <div className="space-y-4">
-              {logs.map((log, i) => (
+              {(logs.length ? logs : [
+                { id: 'f1', icon: 'CheckCircle2', title: 'Connected to live AI feed', highlight: 'Dynamic mode', timestamp: new Date().toISOString() },
+              ]).map((log: any, i: number) => {
+                const Icon = iconMap[log.icon] || CheckCircle2;
+                const iconColor = log.type === 'loan_auto_approve'
+                  ? 'text-shg-primary'
+                  : log.type === 'yield_alert'
+                    ? 'text-shg-tertiary'
+                    : 'text-shg-secondary';
+                return (
                 <div key={i} className="ai-log-item flex gap-3 p-3 rounded-lg hover:bg-surface transition-colors">
                   <div className="mt-0.5">
-                    <log.icon className={`w-5 h-5 ${log.iconColor}`} />
+                    <Icon className={`w-5 h-5 ${iconColor}`} />
                   </div>
                   <div className="flex-1">
                     <p className="text-sm text-on-surface leading-relaxed">
@@ -128,11 +136,12 @@ export default function AIAgentSection() {
                       )}
                     </p>
                     <span className="text-[10px] font-bold text-muted-foreground uppercase mt-1 block">
-                      {log.time}
+                      {timeAgo(log.timestamp)}
                     </span>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             <button className="w-full mt-6 py-3 bg-surface text-shg-primary rounded-xl font-semibold text-sm hover:bg-shg-primary/5 transition-colors flex items-center justify-center gap-2">
@@ -151,7 +160,7 @@ export default function AIAgentSection() {
             </div>
 
             <div className="space-y-4">
-              {actions.map((action, i) => (
+              {(actions.length ? actions : fallbackActions).map((action: any, i: number) => (
                 <div key={i} className="bg-white/5 rounded-xl p-4 border border-white/10">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-sm font-semibold">{action.title}</p>
