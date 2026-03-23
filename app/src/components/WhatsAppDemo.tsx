@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Brain, Mic, Send, X, MessageCircle, Zap, QrCode } from 'lucide-react';
 import { aiAgentApi, qrApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useApiFetch } from '../hooks/useApi';
 
 interface Message {
   id: string;
@@ -13,14 +14,6 @@ interface Message {
   showQR?: boolean;
   qrData?: any;
 }
-
-const QUICK_PROMPTS = [
-  { label: '🚨 Emergency ₹8000 hospital', text: 'Emergency 8000 rupees for hospital' },
-  { label: '💰 Deposit 500 rupees', text: 'Deposit 500 rupees' },
-  { label: '📋 Loan ₹5000', text: 'I need a loan for ₹5000' },
-  { label: '📊 My balance', text: 'My balance' },
-  { label: '📱 Generate QR proof', text: 'Generate QR proof' },
-];
 
 export default function WhatsAppDemo({ onClose }: { onClose?: () => void }) {
   const [messages, setMessages] = useState<Message[]>([
@@ -37,6 +30,19 @@ export default function WhatsAppDemo({ onClose }: { onClose?: () => void }) {
   const { user } = useAuth();
   const memberId = user?._id || 'm1';
   const memberName = user?.name || 'Lakshmi Devi';
+  const { data: promptSuggestions } = useApiFetch(
+    () => aiAgentApi.getSuggestions(user?._id),
+    [user?._id],
+  );
+  const quickPrompts = (promptSuggestions && promptSuggestions.length > 0)
+    ? promptSuggestions
+    : [
+      { label: '🚨 Emergency ₹8000 hospital', text: 'Emergency 8000 rupees for hospital' },
+      { label: '💰 Deposit 500 rupees', text: 'Deposit 500 rupees' },
+      { label: '📋 Loan ₹5000', text: 'I need a loan for ₹5000' },
+      { label: '📊 My balance', text: 'My balance' },
+      { label: '📱 Generate QR proof', text: 'Generate QR proof' },
+    ];
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -186,9 +192,11 @@ export default function WhatsAppDemo({ onClose }: { onClose?: () => void }) {
                         <p className="text-[10px] text-gray-500 mt-1 font-mono">
                           {msg.txHash?.slice(0, 20)}...
                         </p>
-                        <div className="flex items-center gap-1 text-[10px] text-[#075e54] font-bold mt-1">
+                        <div className={`flex items-center gap-1 text-[10px] font-bold mt-1 ${msg.qrData?.payload?.txStatus === 'confirmed' ? 'text-[#075e54]' : 'text-amber-600'}`}>
                           <QrCode className="w-3 h-3" />
-                          Verified on Algorand
+                          {msg.qrData?.payload?.txStatus === 'confirmed'
+                            ? 'Confirmed on Algorand'
+                            : 'Pending confirmation'}
                         </div>
                       </div>
                     )}
@@ -205,7 +213,7 @@ export default function WhatsAppDemo({ onClose }: { onClose?: () => void }) {
 
         {/* Quick Prompts */}
         <div className="bg-white px-3 pt-2 flex gap-2 overflow-x-auto flex-shrink-0 scrollbar-hide">
-          {QUICK_PROMPTS.map(prompt => (
+          {quickPrompts.map(prompt => (
             <button
               key={prompt.text}
               onClick={() => sendMessage(prompt.text)}

@@ -1,12 +1,13 @@
 import { Router, Request, Response } from 'express';
 import {
-  agentState,
   deployIdleFunds,
   harvestYield,
   processEmergencyLoan,
   getAgentStatus,
 } from '../services/agentEngine';
 import { members } from '../data/mockData';
+import User from '../models/User';
+import mongoose from 'mongoose';
 
 const router = Router();
 
@@ -38,10 +39,11 @@ router.get('/vaults', (_req: Request, res: Response) => {
 });
 
 // POST /api/agent/invest — trigger idle fund deployment
-router.post('/invest', (req: Request, res: Response) => {
+router.post('/invest', async (req: Request, res: Response) => {
   const { amount } = req.body;
+  const status = getAgentStatus();
 
-  if (agentState.idleFunds < 1000) {
+  if (status.idleFunds < 1000) {
     res.status(400).json({
       success: false,
       error: 'Insufficient idle funds to deploy (minimum ₹1,000)',
@@ -49,8 +51,8 @@ router.post('/invest', (req: Request, res: Response) => {
     return;
   }
 
-  const deployAmount = amount ? Math.min(amount, agentState.idleFunds) : agentState.idleFunds;
-  const result = deployIdleFunds(deployAmount);
+  const deployAmount = amount ? Math.min(amount, status.idleFunds) : status.idleFunds;
+  const result = await deployIdleFunds(deployAmount);
 
   console.log(`[Agent] Deployed ₹${deployAmount.toLocaleString('en-IN')} to ${result.vault.protocol}`);
 
@@ -66,9 +68,9 @@ router.post('/invest', (req: Request, res: Response) => {
 });
 
 // POST /api/agent/harvest — harvest accumulated yield
-router.post('/harvest', (req: Request, res: Response) => {
+router.post('/harvest', async (req: Request, res: Response) => {
   const { vaultId } = req.body;
-  const result = harvestYield(vaultId);
+  const result = await harvestYield(vaultId);
 
   console.log(`[Agent] Harvested ₹${result.harvested.toLocaleString('en-IN')} yield`);
 
@@ -77,14 +79,14 @@ router.post('/harvest', (req: Request, res: Response) => {
     data: {
       harvested: result.harvested,
       logEntry: result.logEntry,
-      newIdleFunds: agentState.idleFunds,
+      newIdleFunds: getAgentStatus().idleFunds,
       message: `✅ Harvested ₹${result.harvested.toLocaleString('en-IN')} yield. Added to treasury.`,
     },
   });
 });
 
 // POST /api/agent/emergency-loan — agentic emergency loan flow
-router.post('/emergency-loan', (req: Request, res: Response) => {
+router.post('/emergency-loan', async (req: Request, res: Response) => {
   const { memberId = 'm1', amount, purpose = 'emergency medical' } = req.body;
 
   if (!amount) {
@@ -92,16 +94,27 @@ router.post('/emergency-loan', (req: Request, res: Response) => {
     return;
   }
 
-  const member = members.find(m => m.id === memberId);
-  if (!member) {
-    res.status(404).json({ success: false, error: 'Member not found' });
-    return;
+  let memberName = 'Lakshmi Devi';
+  let trustScore = 750;
+
+  if (mongoose.Types.ObjectId.isValid(memberId)) {
+    const dbMember = await User.findById(memberId).select('name trustScore');
+    if (dbMember) {
+      memberName = dbMember.name;
+      trustScore = dbMember.trustScore || trustScore;
+    }
+  } else {
+    const mockMember = members.find(m => m.id === memberId);
+    if (mockMember) {
+      memberName = mockMember.name;
+      trustScore = mockMember.trustScore;
+    }
   }
 
-  const result = processEmergencyLoan({
+  const result = await processEmergencyLoan({
     memberId,
-    memberName: member.name,
-    trustScore: member.trustScore,
+    memberName,
+    trustScore,
     amount,
     purpose,
   });
@@ -111,11 +124,11 @@ router.post('/emergency-loan', (req: Request, res: Response) => {
     success: true,
     data: {
       ...result,
-      memberName: member.name,
-      trustScore: member.trustScore,
+      memberName,
+      trustScore,
       signaturesRequired: result.threshold,
       message: result.autoApproved
-        ? `🚨 EMERGENCY LOAN DISBURSED in <3s — ₹${amount.toLocaleString('en-IN')} sent to ${member.name}`
+        ? `🚨 EMERGENCY LOAN DISBURSED in <3s — ₹${amount.toLocaleString('en-IN')} sent to ${memberName}`
         : `📋 Loan queued for ${result.threshold}-of-3 multi-sig approval`,
       explorerUrl: result.txHash
         ? `https://testnet.algoexplorer.io/tx/${result.txHash}`
@@ -126,7 +139,7 @@ router.post('/emergency-loan', (req: Request, res: Response) => {
 
 // GET /api/agent/repayments — auto-repayment schedules
 router.get('/repayments', (_req: Request, res: Response) => {
-  res.json({ success: true, data: agentState.autoRepayments });
+  res.json({ success: true, data: getAgentStatus().autoRepayments });
 });
 
 export default router;

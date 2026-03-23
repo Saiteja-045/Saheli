@@ -3,6 +3,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { aiLog, treasuryStats, AILogEntry } from '../data/mockData';
 import { generateTxHash } from '../services/algorand';
 import { processEmergencyLoan } from '../services/agentEngine';
+import mongoose from 'mongoose';
+import User from '../models/User';
+import Transaction from '../models/Transaction';
 
 const router = Router();
 
@@ -47,13 +50,17 @@ function parseIntent(message: string): {
   return { intent: 'unknown' };
 }
 
-function buildAgentResponse(intent: ReturnType<typeof parseIntent>, memberName = 'Lakshmi'): {
+async function buildAgentResponse(
+  intent: ReturnType<typeof parseIntent>,
+  memberName = 'Lakshmi',
+  memberId = 'm1',
+): Promise<{
   reply: string;
   action?: string;
   txHash?: string;
   amount?: number;
   showQR?: boolean;
-} {
+}> {
   const txHash = generateTxHash();
 
   switch (intent.intent) {
@@ -89,10 +96,16 @@ function buildAgentResponse(intent: ReturnType<typeof parseIntent>, memberName =
     }
     case 'loan': {
       const amt = intent.amount || 5000;
-      const agentResult = processEmergencyLoan({
-        memberId: 'm1',
+      let trustScore = 850;
+      if (mongoose.Types.ObjectId.isValid(memberId)) {
+        const user = await User.findById(memberId).select('trustScore');
+        if (user) trustScore = user.trustScore;
+      }
+
+      const agentResult = await processEmergencyLoan({
+        memberId,
         memberName,
-        trustScore: 850,
+        trustScore,
         amount: amt,
         purpose: intent.purpose || 'general purpose',
       });
@@ -145,6 +158,60 @@ router.get('/log', (_req: Request, res: Response) => {
   res.json({ success: true, data: mutableLog.slice(0, 10) });
 });
 
+// GET /api/ai-agent/suggestions
+router.get('/suggestions', async (req: Request, res: Response) => {
+  const { memberId } = req.query;
+
+  const defaultSuggestions = [
+    { label: '💰 Deposit savings', text: 'Deposit 500 rupees' },
+    { label: '📋 Request loan', text: 'I need a loan for ₹5000' },
+    { label: '📊 My balance', text: 'My balance' },
+    { label: '📱 Generate QR proof', text: 'Generate QR proof' },
+  ];
+
+  if (!memberId || typeof memberId !== 'string' || !mongoose.Types.ObjectId.isValid(memberId)) {
+    res.json({ success: true, data: defaultSuggestions });
+    return;
+  }
+
+  const [user, latestTx, pendingLoan] = await Promise.all([
+    User.findById(memberId).select('totalSavings activeLoans trustScore').lean(),
+    Transaction.findOne({ user: memberId }).sort({ createdAt: -1 }).lean(),
+    User.findById(memberId).select('activeLoans').lean(),
+  ]);
+
+  if (!user) {
+    res.json({ success: true, data: defaultSuggestions });
+    return;
+  }
+
+  const suggestions = [] as Array<{ label: string; text: string }>;
+
+  if ((pendingLoan?.activeLoans || 0) > 0) {
+    suggestions.push({ label: '📌 Loan status', text: 'Check my loan status' });
+  }
+
+  if ((user.totalSavings || 0) < 1000) {
+    suggestions.push({ label: '💰 Add weekly savings', text: 'Deposit 500 rupees' });
+  }
+
+  const lastTxAgeDays = latestTx?.createdAt
+    ? Math.floor((Date.now() - new Date(latestTx.createdAt).getTime()) / (24 * 60 * 60 * 1000))
+    : 999;
+  if (lastTxAgeDays > 30) {
+    suggestions.push({ label: '🔄 Sync new deposit', text: 'Deposit 1000 rupees' });
+  }
+
+  if ((user.trustScore || 0) >= 800) {
+    suggestions.push({ label: '🚨 Emergency ₹8000 hospital', text: 'Emergency 8000 rupees for hospital' });
+  }
+
+  suggestions.push({ label: '📊 My balance', text: 'My balance' });
+  suggestions.push({ label: '📱 Generate QR proof', text: 'Generate QR proof' });
+
+  res.json({ success: true, data: suggestions.slice(0, 5) });
+});
+
 // GET /api/ai-agent/insights
 router.get('/insights', (_req: Request, res: Response) => {
   res.json({
@@ -178,7 +245,7 @@ router.get('/insights', (_req: Request, res: Response) => {
 });
 
 // POST /api/ai-agent/chat (WhatsApp message parsing)
-router.post('/chat', (req: Request, res: Response) => {
+router.post('/chat', async (req: Request, res: Response) => {
   const { message, memberId = 'm1', memberName = 'Lakshmi' } = req.body;
 
   if (!message) {
@@ -188,7 +255,7 @@ router.post('/chat', (req: Request, res: Response) => {
 
   // Simulate a short processing delay acknowledgment
   const intent = parseIntent(message);
-  const response = buildAgentResponse(intent, memberName);
+  const response = await buildAgentResponse(intent, memberName, memberId);
 
   // Log the interaction
   console.log(`[AI Agent] Member: ${memberName} | Intent: ${intent.intent} | Message: "${message}"`);

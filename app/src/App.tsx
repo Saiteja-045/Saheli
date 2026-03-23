@@ -84,9 +84,15 @@ function App() {
 
   if (view === 'dashboard') {
     const authRole = user?.role as 'member' | 'leader' | 'bank' | undefined;
-    // Members cannot access bank dashboard at all
-    const safeRole = authRole === 'member' && currentRole === 'bank' ? 'member' : currentRole;
-    const isReadOnly = authRole === 'member' && safeRole === 'leader';
+    const canViewBankDashboard = authRole === 'leader' || authRole === 'bank';
+
+    let safeRole = currentRole;
+    if (!canViewBankDashboard && currentRole === 'bank') {
+      safeRole = authRole === 'leader' ? 'leader' : 'member';
+    }
+
+    const isLeaderReadOnly = authRole === 'member' && safeRole === 'leader';
+    const isBankReadOnly = authRole === 'leader' && safeRole === 'bank';
 
     return (
       <div className="min-h-screen bg-surface">
@@ -100,8 +106,8 @@ function App() {
         <Sidebar currentRole={safeRole} />
         <main className="lg:ml-64 pt-16 min-h-screen">
           {safeRole === 'member' && <MemberDashboard />}
-          {safeRole === 'leader' && <LeaderDashboard isReadOnly={isReadOnly} />}
-          {safeRole === 'bank' && authRole !== 'member' && <BankDashboard />}
+          {safeRole === 'leader' && <LeaderDashboard isReadOnly={isLeaderReadOnly} />}
+          {safeRole === 'bank' && canViewBankDashboard && <BankDashboard isReadOnly={isBankReadOnly} />}
         </main>
         {showWhatsAppDemo && <WhatsAppDemo onClose={() => setShowWhatsAppDemo(false)} />}
       </div>
