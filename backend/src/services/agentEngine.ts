@@ -1,5 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { generateTxHash } from './algorand';
+import AgentStateModel from '../models/AgentState';
+import Transaction from '../models/Transaction';
+import { registerTransactionLifecycle } from './algorand';
 
 // ─── Agent State ─────────────────────────────────────────────────────────────
 
@@ -49,7 +52,7 @@ export interface AgentState {
 
 // ─── Initial State ───────────────────────────────────────────────────────────
 
-export const agentState: AgentState = {
+const initialAgentState: AgentState = {
   idleFunds: 345800,
   totalDeployed: 900000,
   totalYieldHarvested: 52400,
@@ -156,13 +159,61 @@ export const agentState: AgentState = {
   ],
 };
 
+export let agentState: AgentState = JSON.parse(JSON.stringify(initialAgentState));
+
+function cloneState(state: AgentState): AgentState {
+  return JSON.parse(JSON.stringify(state));
+}
+
+async function persistAgentState(): Promise<void> {
+  await AgentStateModel.findOneAndUpdate(
+    { key: 'singleton' },
+    { key: 'singleton', ...agentState },
+    { upsert: true, new: true, setDefaultsOnInsert: true },
+  );
+}
+
+export async function initializeAgentState(): Promise<void> {
+  const existing = await AgentStateModel.findOne({ key: 'singleton' }).lean<AgentState & { key: string }>();
+
+  if (existing) {
+    const { key: _key, ...persisted } = existing;
+    agentState = cloneState(persisted as AgentState);
+    return;
+  }
+
+  agentState = cloneState(initialAgentState);
+  await persistAgentState();
+}
+
+export async function recalculateIdleFunds(): Promise<number> {
+  const inflowTypes = ['deposit', 'yield', 'loan_repayment'];
+  const outflowTypes = ['withdrawal', 'loan_disbursement'];
+
+  const [inflows, outflows] = await Promise.all([
+    Transaction.aggregate([{ $match: { type: { $in: inflowTypes }, status: { $ne: 'failed' } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
+    Transaction.aggregate([{ $match: { type: { $in: outflowTypes }, status: { $ne: 'failed' } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
+  ]);
+
+  const totalInflow = inflows[0]?.total || 0;
+  const totalOutflow = outflows[0]?.total || 0;
+  const vaultAum = agentState.vaultPositions.reduce((sum, v) => sum + v.deployed, 0);
+  const netTreasury = Math.max(0, totalInflow - totalOutflow);
+
+  agentState.idleFunds = Math.max(0, netTreasury - vaultAum);
+  agentState.lastScanAt = new Date().toISOString();
+  await persistAgentState();
+
+  return agentState.idleFunds;
+}
+
 // ─── Agent Actions ────────────────────────────────────────────────────────────
 
-export function deployIdleFunds(amount?: number): {
+export async function deployIdleFunds(amount?: number): Promise<{
   vault: VaultPosition;
   logEntry: AgentLogEntry;
   newIdleFunds: number;
-} {
+}> {
   const deployAmount = amount || Math.min(agentState.idleFunds, 50000);
   const protocols = [
     { protocol: 'Folks Finance', asset: 'ALGO', apy: 4.2 },
@@ -172,6 +223,13 @@ export function deployIdleFunds(amount?: number): {
   ];
   const chosen = protocols[Math.floor(Math.random() * protocols.length)];
   const txHash = generateTxHash();
+  registerTransactionLifecycle({
+    txHash,
+    type: 'vault_deploy',
+    amount: deployAmount,
+    initialStatus: 'pending',
+    autoConfirm: true,
+  });
 
   const vault: VaultPosition = {
     id: uuidv4(),
@@ -200,14 +258,15 @@ export function deployIdleFunds(amount?: number): {
     timestamp: new Date().toISOString(),
   };
   agentState.agentLog.unshift(logEntry);
+  await persistAgentState();
 
   return { vault, logEntry, newIdleFunds: agentState.idleFunds };
 }
 
-export function harvestYield(vaultId?: string): {
+export async function harvestYield(vaultId?: string): Promise<{
   harvested: number;
   logEntry: AgentLogEntry;
-} {
+}> {
   const targetVaults = vaultId
     ? agentState.vaultPositions.filter(v => v.id === vaultId)
     : agentState.vaultPositions.filter(v => v.status === 'active');
@@ -231,21 +290,32 @@ export function harvestYield(vaultId?: string): {
     message: `Harvested ₹${harvestedAmount.toLocaleString('en-IN')} yield from ${targetVaults.length} vaults`,
     detail: 'Yield redistributed to SHG treasury.',
     amount: harvestedAmount,
-    txHash: generateTxHash(),
+    txHash: (() => {
+      const hash = generateTxHash();
+      registerTransactionLifecycle({
+        txHash: hash,
+        type: 'yield_harvest',
+        amount: harvestedAmount,
+        initialStatus: 'pending',
+        autoConfirm: true,
+      });
+      return hash;
+    })(),
     timestamp: new Date().toISOString(),
   };
   agentState.agentLog.unshift(logEntry);
+  await persistAgentState();
 
   return { harvested: harvestedAmount, logEntry };
 }
 
-export function processEmergencyLoan(params: {
+export async function processEmergencyLoan(params: {
   memberId: string;
   memberName: string;
   trustScore: number;
   amount: number;
   purpose: string;
-}): {
+}): Promise<{
   approved: boolean;
   autoApproved: boolean;
   threshold: number;
@@ -253,7 +323,7 @@ export function processEmergencyLoan(params: {
   autoRepayment?: AutoRepayment;
   logEntry: AgentLogEntry;
   reason: string;
-} {
+}> {
   const { memberId, memberName, trustScore, amount, purpose } = params;
   const isEmergency = /medical|hospital|emergency|health|urgent|accident/i.test(purpose);
   const isMicroLoan = amount <= 5000;
@@ -290,6 +360,13 @@ export function processEmergencyLoan(params: {
 
   if (autoApproved) {
     txHash = generateTxHash();
+    registerTransactionLifecycle({
+      txHash,
+      type: 'loan_disbursement',
+      amount,
+      initialStatus: 'pending',
+      autoConfirm: true,
+    });
     const installmentAmount = Math.ceil(amount / 6);
     autoRepayment = {
       loanId: uuidv4(),
@@ -319,6 +396,7 @@ export function processEmergencyLoan(params: {
   };
   agentState.agentLog.unshift(logEntry);
   agentState.lastScanAt = new Date().toISOString();
+  await persistAgentState();
 
   return { approved, autoApproved, threshold, txHash, autoRepayment, logEntry, reason };
 }

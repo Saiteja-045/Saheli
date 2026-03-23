@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import Transaction from '../models/Transaction';
 
 /**
  * Mock Algorand SDK wrapper.
@@ -12,6 +13,82 @@ export function generateTxHash(): string {
     result += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return result;
+}
+
+type TxStatus = 'pending' | 'confirmed' | 'failed';
+
+type LifecycleRecord = {
+  txHash: string;
+  status: TxStatus;
+  type: string;
+  amount: number;
+  createdAt: string;
+  confirmedAt?: string;
+  block?: number;
+};
+
+const txLifecycleStore = new Map<string, LifecycleRecord>();
+
+export function registerTransactionLifecycle(params: {
+  txHash: string;
+  type?: string;
+  amount?: number;
+  initialStatus?: TxStatus;
+  autoConfirm?: boolean;
+  autoConfirmDelayMs?: number;
+}): LifecycleRecord {
+  const existing = txLifecycleStore.get(params.txHash);
+  if (existing) {
+    return existing;
+  }
+
+  const record: LifecycleRecord = {
+    txHash: params.txHash,
+    status: params.initialStatus || 'pending',
+    type: params.type || 'ApplicationCall',
+    amount: params.amount || 0,
+    createdAt: new Date().toISOString(),
+  };
+
+  txLifecycleStore.set(params.txHash, record);
+
+  const shouldAutoConfirm = params.autoConfirm ?? true;
+  if (shouldAutoConfirm && record.status === 'pending') {
+    const delayMs = params.autoConfirmDelayMs ?? (2000 + Math.floor(Math.random() * 3000));
+    setTimeout(() => {
+      const current = txLifecycleStore.get(params.txHash);
+      if (!current || current.status !== 'pending') return;
+      current.status = 'confirmed';
+      current.confirmedAt = new Date().toISOString();
+      current.block = Math.floor(Math.random() * 1000000) + 40000000;
+      txLifecycleStore.set(params.txHash, current);
+    }, delayMs);
+  }
+
+  return record;
+}
+
+export function setTransactionLifecycleStatus(txHash: string, status: TxStatus): void {
+  const existing = txLifecycleStore.get(txHash);
+  if (!existing) {
+    txLifecycleStore.set(txHash, {
+      txHash,
+      status,
+      type: 'ApplicationCall',
+      amount: 0,
+      createdAt: new Date().toISOString(),
+      confirmedAt: status === 'confirmed' ? new Date().toISOString() : undefined,
+      block: status === 'confirmed' ? Math.floor(Math.random() * 1000000) + 40000000 : undefined,
+    });
+    return;
+  }
+
+  existing.status = status;
+  if (status === 'confirmed') {
+    existing.confirmedAt = existing.confirmedAt || new Date().toISOString();
+    existing.block = existing.block || Math.floor(Math.random() * 1000000) + 40000000;
+  }
+  txLifecycleStore.set(txHash, existing);
 }
 
 export function generateASATransfer(params: {
@@ -67,21 +144,45 @@ export function generateSBTMint(memberId: string): {
   };
 }
 
-export function verifyTransaction(txHash: string): {
+export async function verifyTransaction(txHash: string): Promise<{
   valid: boolean;
-  block: number;
-  confirmedAt: string;
-  type: string;
-  amount: number;
+  status: TxStatus | 'not_found';
+  block?: number;
+  confirmedAt?: string;
+  type?: string;
+  amount?: number;
   explorer: string;
-} {
-  // Mock verification — always returns valid for demo
+}> {
+  const dbTx = await Transaction.findOne({ txHash }).lean();
+  if (dbTx) {
+    const normalizedStatus: TxStatus = (dbTx.status as TxStatus) || 'pending';
+    return {
+      valid: normalizedStatus !== 'failed',
+      status: normalizedStatus,
+      block: normalizedStatus === 'confirmed' ? Math.floor(Math.random() * 1000000) + 40000000 : undefined,
+      confirmedAt: normalizedStatus === 'confirmed' ? new Date().toISOString() : undefined,
+      type: dbTx.type,
+      amount: dbTx.amount,
+      explorer: `https://testnet.algoexplorer.io/tx/${txHash}`,
+    };
+  }
+
+  const lifecycleTx = txLifecycleStore.get(txHash);
+  if (lifecycleTx) {
+    return {
+      valid: lifecycleTx.status !== 'failed',
+      status: lifecycleTx.status,
+      block: lifecycleTx.block,
+      confirmedAt: lifecycleTx.confirmedAt,
+      type: lifecycleTx.type,
+      amount: lifecycleTx.amount,
+      explorer: `https://testnet.algoexplorer.io/tx/${txHash}`,
+    };
+  }
+
   return {
-    valid: true,
-    block: Math.floor(Math.random() * 1000000) + 40000000,
-    confirmedAt: new Date(Date.now() - Math.random() * 86400000).toISOString(),
-    type: 'ApplicationCall',
-    amount: Math.floor(Math.random() * 50000) + 500,
+    valid: false,
+    status: 'not_found',
     explorer: `https://testnet.algoexplorer.io/tx/${txHash}`,
   };
 }

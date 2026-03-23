@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import QRCode from 'qrcode';
-import { verifyTransaction, generateTxHash } from '../services/algorand';
+import { verifyTransaction, generateTxHash, registerTransactionLifecycle } from '../services/algorand';
 
 const router = Router();
 
@@ -10,6 +10,13 @@ router.post('/generate', async (req: Request, res: Response) => {
     const { txHash, memberId, memberName, amount, type } = req.body;
 
     const hash = txHash || generateTxHash();
+    const lifecycle = registerTransactionLifecycle({
+      txHash: hash,
+      type: type || 'deposit',
+      amount: Number(amount) || 0,
+      initialStatus: 'pending',
+      autoConfirm: true,
+    });
 
     // Build the QR payload — this is what gets embedded in the QR code
     const qrPayload = JSON.stringify({
@@ -20,8 +27,10 @@ router.post('/generate', async (req: Request, res: Response) => {
       memberName: memberName || 'Lakshmi Devi',
       amount,
       type: type || 'deposit',
-      verified: true,
+      txStatus: lifecycle.status,
+      verified: lifecycle.status === 'confirmed',
       verifyUrl: `https://testnet.algoexplorer.io/tx/${hash}`,
+      saheliVerifyUrl: `/api/qr/verify/${hash}`,
       timestamp: new Date().toISOString(),
     });
 
@@ -44,7 +53,7 @@ router.post('/generate', async (req: Request, res: Response) => {
         qrCode: qrDataUrl,
         payload: JSON.parse(qrPayload),
         explorerUrl: `https://testnet.algoexplorer.io/tx/${hash}`,
-        message: '✅ QR proof generated. Share this with any bank officer to verify offline.',
+        message: '✅ QR proof generated. Transaction will move from pending to confirmed shortly.',
       },
     });
   } catch (err) {
@@ -53,18 +62,20 @@ router.post('/generate', async (req: Request, res: Response) => {
 });
 
 // GET /api/qr/verify/:txHash
-router.get('/verify/:txHash', (req: Request, res: Response) => {
+router.get('/verify/:txHash', async (req: Request, res: Response) => {
   const { txHash } = req.params;
-  const result = verifyTransaction(txHash);
+  const result = await verifyTransaction(txHash);
 
   res.json({
     success: true,
     data: {
       txHash,
       ...result,
-      message: result.valid
-        ? '✅ Transaction verified on Algorand blockchain'
-        : '❌ Transaction not found',
+      message: !result.valid
+        ? '❌ Transaction not found'
+        : result.status === 'pending'
+          ? '⏳ Transaction is pending confirmation'
+          : '✅ Transaction verified on Algorand blockchain',
     },
   });
 });
