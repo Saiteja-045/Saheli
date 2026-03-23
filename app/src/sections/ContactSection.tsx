@@ -35,7 +35,7 @@ export default function ContactSection() {
                 </div>
                 <div>
                   <p className="text-sm text-white/50">Email us</p>
-                  <p className="font-semibold">hello@shgchain.org</p>
+                  <p className="font-semibold">hello@saheli.org</p>
                 </div>
               </div>
 
@@ -137,8 +137,8 @@ export default function ContactSection() {
         {/* Footer */}
         <div className="mt-16 pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-4">
           <div>
-            <p className="font-headline font-bold text-lg">SHG Chain</p>
-            <p className="text-sm text-white/50">© 2026 SHG Chain. Built for rural finance.</p>
+            <p className="font-headline font-bold text-lg">Saheli</p>
+            <p className="text-sm text-white/50">© 2026 Saheli. Built for rural finance.</p>
           </div>
           <div className="flex gap-6">
             <a href="#" className="text-sm text-white/50 hover:text-white transition-colors">

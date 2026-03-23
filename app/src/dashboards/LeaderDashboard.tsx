@@ -13,6 +13,7 @@ import {
   Clock,
   Cpu,
   ShieldAlert,
+  Eye,
 } from 'lucide-react';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { gsap } from 'gsap';
@@ -38,7 +39,7 @@ const iconMap: Record<string, typeof CheckCircle2> = {
   CheckCircle2, Zap, AlertTriangle, Clock, TrendingUp, Cpu, ShieldAlert,
 };
 
-export default function LeaderDashboard() {
+export default function LeaderDashboard({ isReadOnly = false }: { isReadOnly?: boolean }) {
   const dashboardRef = useRef<HTMLDivElement>(null);
   const [actionMessages, setActionMessages] = useState<Record<string, string>>({});
   const [investing, setInvesting] = useState(false);
@@ -123,16 +124,23 @@ export default function LeaderDashboard() {
               Treasury Overview
             </h1>
           </div>
-          <div className="flex gap-3">
-            <button className="px-5 py-2.5 bg-surface text-on-surface rounded-full font-semibold text-sm hover:bg-surface-container transition-colors flex items-center gap-2">
-              <FileText className="w-4 h-4" />
-              Export Report
-            </button>
-            <button className="px-5 py-2.5 bg-shg-primary text-white rounded-full font-semibold text-sm hover:opacity-90 transition-opacity flex items-center gap-2 shadow-lg shadow-shg-primary/20">
-              <Plus className="w-4 h-4" />
-              New Transaction
-            </button>
-          </div>
+          {isReadOnly ? (
+            <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-sm font-semibold">
+              <Eye className="w-4 h-4" />
+              Read-only view — Leader actions are restricted to SHG Leaders
+            </div>
+          ) : (
+            <div className="flex gap-3">
+              <button className="px-5 py-2.5 bg-surface text-on-surface rounded-full font-semibold text-sm hover:bg-surface-container transition-colors flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                Export Report
+              </button>
+              <button className="px-5 py-2.5 bg-shg-primary text-white rounded-full font-semibold text-sm hover:opacity-90 transition-opacity flex items-center gap-2 shadow-lg shadow-shg-primary/20">
+                <Plus className="w-4 h-4" />
+                New Transaction
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
@@ -247,32 +255,36 @@ export default function LeaderDashboard() {
                         {actionMessages[action.id]}
                       </p>
                     )}
-                  </div>
-                  <div className="w-full md:w-64 space-y-3">
-                    <div className="flex justify-between text-xs font-bold text-muted-foreground">
-                      <span>APPROVAL PROGRESS</span>
-                      <span>{action.signatures.length}/{action.signaturesRequired} APPROVED</span>
-                    </div>
-                    <div className="h-2 bg-surface rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-shg-primary rounded-full transition-all duration-500"
-                        style={{ width: `${(action.signatures.length / action.signaturesRequired) * 100}%` }}
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleApprove(action.id)}
-                        disabled={signing}
-                        className="flex-1 py-2 bg-shg-primary text-white rounded-lg text-sm font-bold active:scale-95 transition-transform hover:opacity-90 disabled:opacity-60"
-                      >
-                        {signing ? '...' : 'Approve'}
-                      </button>
-                      <button
-                        onClick={() => handleReject(action.id)}
-                        className="px-3 py-2 border border-border text-shg-error rounded-lg text-sm font-bold hover:bg-shg-error/10 transition-colors"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
+                    <div className="w-full md:w-64 space-y-3">
+                      <div className="flex justify-between text-xs font-bold text-muted-foreground">
+                        <span>APPROVAL PROGRESS</span>
+                        <span>{action.signatures.length}/{action.signaturesRequired} APPROVED</span>
+                      </div>
+                      <div className="h-2 bg-surface rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-shg-primary rounded-full transition-all duration-500"
+                          style={{ width: `${(action.signatures.length / action.signaturesRequired) * 100}%` }}
+                        />
+                      </div>
+                      {isReadOnly ? (
+                        <p className="text-xs text-muted-foreground italic text-center py-1">Approval requires Leader role</p>
+                      ) : (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleApprove(action.id)}
+                            disabled={signing}
+                            className="flex-1 py-2 bg-shg-primary text-white rounded-lg text-sm font-bold active:scale-95 transition-transform hover:opacity-90 disabled:opacity-60"
+                          >
+                            {signing ? '...' : 'Approve'}
+                          </button>
+                          <button
+                            onClick={() => handleReject(action.id)}
+                            className="px-3 py-2 border border-border text-shg-error rounded-lg text-sm font-bold hover:bg-shg-error/10 transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

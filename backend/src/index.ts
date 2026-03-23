@@ -1,9 +1,14 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { connectDB } from './config/db';
 
 dotenv.config();
 
+// Connect to MongoDB
+connectDB();
+
+import authRouter from './routes/auth';
 import membersRouter from './routes/members';
 import transactionsRouter from './routes/transactions';
 import loansRouter from './routes/loans';
@@ -33,6 +38,7 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // ─── Routes ────────────────────────────────────────────────────────────────
+app.use('/api/auth', authRouter);
 app.use('/api/members', membersRouter);
 app.use('/api/transactions', transactionsRouter);
 app.use('/api/loans', loansRouter);
@@ -46,7 +52,7 @@ app.use('/api/agent', agentRouter);
 app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
-    service: 'Saheli SHG Chain API',
+    service: 'Saheli Saheli API',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
     endpoints: [
@@ -85,10 +91,37 @@ app.use((_req, res) => {
 });
 
 // ─── Start ──────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`\n🚀 Saheli SHG Chain API running on http://localhost:${PORT}`);
-  console.log(`📖 Health check: http://localhost:${PORT}/health`);
-  console.log(`🔗 Environment: ${process.env.NODE_ENV || 'development'}\n`);
+const server = app.listen(PORT, () => {
+  console.log(`\n Saheli Saheli API running on http://localhost:${PORT}`);
+  console.log(` Health check: http://localhost:${PORT}/health`);
+  console.log(` Environment: ${process.env.NODE_ENV || 'development'}\n`);
+});
+
+// Graceful shutdown
+const shutdown = () => {
+  console.log('\nShutting down server gracefully...');
+  server.close(() => {
+    console.log('Server closed.');
+    process.exit(0);
+  });
+  setTimeout(() => {
+    console.error('Could not close connections in time, forcefully shutting down');
+    process.exit(1);
+  }, 5000);
+};
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+
+// Safety net: catch port-in-use errors early
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`\n❌ Port ${PORT} is already in use. Please kill the stale process and restart.`);
+    console.error('   Run: npx kill-port ' + PORT);
+    process.exit(1);
+  } else {
+    throw err;
+  }
 });
 
 export default app;

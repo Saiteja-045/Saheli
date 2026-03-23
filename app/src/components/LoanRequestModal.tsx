@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { X, Brain, Zap, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { X, Brain, Zap, AlertCircle, CheckCircle2, Loader2, Wallet } from 'lucide-react';
 import { loansApi, qrApi } from '../lib/api';
 import QRCodeDisplay from './QRCodeDisplay';
 import { toast } from 'sonner';
+import { useWallet } from '../contexts/WalletContext';
+import algosdk from 'algosdk';
 
 interface LoanRequestModalProps {
   onClose: () => void;
@@ -32,8 +34,17 @@ export default function LoanRequestModal({
   const [customPurpose, setCustomPurpose] = useState('');
   const [result, setResult] = useState<any>(null);
   const [qrData, setQrData] = useState<any>(null);
+  const { isConnected, accountAddress, peraWallet, connectWallet } = useWallet();
+
+  // TestNet Algod setup
+  const algodClient = new algosdk.Algodv2('', 'https://testnet-api.algonode.cloud', '');
 
   const handleSubmit = async () => {
+    if (!isConnected || !accountAddress) {
+      toast.error('Please connect your Pera Wallet first');
+      return;
+    }
+
     const amt = parseInt(amount);
     if (!amt || !purpose) {
       toast.error('Please fill in all fields');
@@ -43,18 +54,48 @@ export default function LoanRequestModal({
     setStep('evaluating');
 
     try {
+      // 1. Construct an on-chain transaction (e.g., a note indicating loan request)
+      const suggestedParams = await algodClient.getTransactionParams().do();
+      
+      const note = new TextEncoder().encode(JSON.stringify({
+        type: 'LOAN_REQUEST',
+        amount: amt,
+        purpose: customPurpose || purpose
+      }));
+
+      // A simple 0 Algo transaction to self to log the request on-chain
+      const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+        sender: accountAddress,
+        receiver: accountAddress,
+        amount: 0,
+        note,
+        suggestedParams
+      });
+
+      // 2. Sign transaction with Pera Wallet
+      const singleTxnGroups = [{ txn, signers: [accountAddress] }];
+      const signedTxn = await peraWallet.signTransaction([singleTxnGroups]);
+
+      // 3. Send transaction to network
+      const sendRes = await algodClient.sendRawTransaction(signedTxn).do();
+      const txId = (sendRes as any).txId || (sendRes as any).txid;
+      
+      // Wait for confirmation (simplified)
+      await algosdk.waitForConfirmation(algodClient, txId, 4);
+
+      // 4. Update backend (mock AI evaluation)
       const res = await loansApi.request({
         memberId,
         amount: amt,
         purpose: customPurpose || purpose,
       });
-      setResult(res);
+      setResult({ ...res, loan: { ...res.loan, txHash: txId } });
 
       // Generate QR if loan was auto-approved
-      if (res.loan?.txHash) {
+      if (res.loan?.status === 'approved') {
         try {
           const qr = await qrApi.generate({
-            txHash: res.loan.txHash,
+            txHash: txId,
             memberId,
             memberName,
             amount: amt,
@@ -73,8 +114,9 @@ export default function LoanRequestModal({
       } else {
         toast.info('Loan submitted for multi-sig approval');
       }
-    } catch (err) {
-      toast.error('Could not connect to backend. Is the API server running?');
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.message || 'Transaction failed or rejected by wallet');
       setStep('form');
     }
   };
@@ -158,14 +200,24 @@ export default function LoanRequestModal({
                 />
               </div>
 
-              <button
-                onClick={handleSubmit}
-                disabled={!amount || (!purpose && !customPurpose)}
-                className="w-full py-3.5 bg-shg-primary text-white rounded-xl font-bold text-sm hover:opacity-90 transition-opacity active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                <Brain className="w-4 h-4" />
-                Submit for AI Evaluation
-              </button>
+              {isConnected ? (
+                <button
+                  onClick={handleSubmit}
+                  disabled={!amount || (!purpose && !customPurpose)}
+                  className="w-full py-3.5 bg-shg-primary text-white rounded-xl font-bold text-sm hover:opacity-90 transition-opacity active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  <Brain className="w-4 h-4" />
+                  Sign & Submit for AI Evaluation
+                </button>
+              ) : (
+                <button
+                  onClick={connectWallet}
+                  className="w-full py-3.5 bg-slate-800 text-white rounded-xl font-bold text-sm hover:opacity-90 transition-opacity active:scale-95 flex items-center justify-center gap-2"
+                >
+                  <Wallet className="w-4 h-4" />
+                  Connect Pera Wallet to Request
+                </button>
+              )}
             </>
           )}
 

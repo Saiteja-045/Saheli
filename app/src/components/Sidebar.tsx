@@ -31,7 +31,7 @@ export default function Sidebar({ currentRole }: SidebarProps) {
     <aside className="hidden lg:flex h-screen w-64 fixed left-0 top-0 border-r border-border/50 bg-white flex-col py-6 z-40">
       {/* Logo Area */}
       <div className="px-6 mb-8 pt-16">
-        <h2 className="font-headline text-2xl font-black text-shg-primary">SHG Chain</h2>
+        <h2 className="font-headline text-2xl font-black text-shg-primary">Saheli</h2>
         <p className="text-xs font-medium text-muted-foreground mt-1">Empowering Rural Finance</p>
       </div>
 

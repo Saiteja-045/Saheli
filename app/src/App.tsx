@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar';
 import MemberDashboard from './dashboards/MemberDashboard';
 import LeaderDashboard from './dashboards/LeaderDashboard';
 import BankDashboard from './dashboards/BankDashboard';
+import AuthPage from './components/AuthPage';
 import HeroSection from './sections/HeroSection';
 import HowItWorks from './sections/HowItWorks';
 import AIAgentSection from './sections/AIAgentSection';
@@ -17,76 +18,110 @@ import WhatsAppSection from './sections/WhatsAppSection';
 import ImpactMetrics from './sections/ImpactMetrics';
 import ContactSection from './sections/ContactSection';
 import WhatsAppDemo from './components/WhatsAppDemo';
+import { useAuth } from './contexts/AuthContext';
 
 gsap.registerPlugin(ScrollTrigger);
 
 type UserRole = 'member' | 'leader' | 'bank';
+type AppView = 'landing' | 'auth' | 'dashboard';
 
 function App() {
+  const { user, loading, logout } = useAuth();
   const [currentRole, setCurrentRole] = useState<UserRole>('member');
-  const [showLanding, setShowLanding] = useState(true);
+  const [view, setView] = useState<AppView>('landing');
   const [showWhatsAppDemo, setShowWhatsAppDemo] = useState(false);
 
   useEffect(() => {
-    // Check if user has already selected a role
-    const savedRole = localStorage.getItem('shg-role');
-    if (savedRole) {
-      setCurrentRole(savedRole as UserRole);
-      setShowLanding(false);
+    if (loading) return;
+    if (user) {
+      // Authenticated — go straight to their dashboard
+      setCurrentRole(user.role as UserRole);
+      setView('dashboard');
+    } else {
+      // No JWT session → always show auth page
+      setView('auth');
     }
-  }, []);
+  }, [user, loading]);
 
   useEffect(() => {
-    if (!showLanding) {
-      // Refresh ScrollTrigger when switching to dashboard view
-      ScrollTrigger.refresh();
-    }
-  }, [showLanding]);
+    if (view !== 'dashboard') ScrollTrigger.refresh();
+  }, [view]);
 
-  const handleRoleSelect = (role: UserRole) => {
+  const handleAuthSuccess = (role: UserRole) => {
     setCurrentRole(role);
-    localStorage.setItem('shg-role', role);
-    setShowLanding(false);
+    setView('dashboard');
+  };
+
+  const handleRoleSelectFromHero = (_role: UserRole) => {
+    setView('auth');
   };
 
   const handleSwitchPersona = () => {
-    setShowLanding(true);
+    logout();
     localStorage.removeItem('shg-role');
+    setView('landing');
   };
 
-  if (showLanding) {
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 rounded-full border-4 border-blue-500/30 border-t-blue-500 animate-spin mx-auto mb-4" />
+          <p className="text-white/50 text-sm">Restoring session…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === 'auth') {
+    return (
+      <>
+        <Toaster position="top-right" richColors />
+        <AuthPage onSuccess={handleAuthSuccess} />
+      </>
+    );
+  }
+
+  if (view === 'dashboard') {
+    const authRole = user?.role as 'member' | 'leader' | 'bank' | undefined;
+    // Members cannot access bank dashboard at all
+    const safeRole = authRole === 'member' && currentRole === 'bank' ? 'member' : currentRole;
+    const isReadOnly = authRole === 'member' && safeRole === 'leader';
+
     return (
       <div className="min-h-screen bg-surface">
         <Toaster position="top-right" richColors />
-        <TopNav />
-        <HeroSection onRoleSelect={handleRoleSelect} onOpenWhatsApp={() => setShowWhatsAppDemo(true)} />
-        <HowItWorks />
-        <AIAgentSection />
-        <DSBTSection />
-        <OfflineProofSection />
-        <MultiSigSection />
-        <WhatsAppSection onTryDemo={() => setShowWhatsAppDemo(true)} />
-        <ImpactMetrics />
-        <ContactSection />
+        <TopNav
+          currentRole={safeRole}
+          authRole={authRole}
+          onRoleChange={setCurrentRole}
+          onSwitchPersona={handleSwitchPersona}
+        />
+        <Sidebar currentRole={safeRole} />
+        <main className="lg:ml-64 pt-16 min-h-screen">
+          {safeRole === 'member' && <MemberDashboard />}
+          {safeRole === 'leader' && <LeaderDashboard isReadOnly={isReadOnly} />}
+          {safeRole === 'bank' && authRole !== 'member' && <BankDashboard />}
+        </main>
         {showWhatsAppDemo && <WhatsAppDemo onClose={() => setShowWhatsAppDemo(false)} />}
       </div>
     );
   }
 
+  // Landing
   return (
     <div className="min-h-screen bg-surface">
       <Toaster position="top-right" richColors />
-      <TopNav
-        currentRole={currentRole}
-        onRoleChange={setCurrentRole}
-        onSwitchPersona={handleSwitchPersona}
-      />
-      <Sidebar currentRole={currentRole} />
-      <main className="lg:ml-64 pt-16 min-h-screen">
-        {currentRole === 'member' && <MemberDashboard />}
-        {currentRole === 'leader' && <LeaderDashboard />}
-        {currentRole === 'bank' && <BankDashboard />}
-      </main>
+      <TopNav />
+      <HeroSection onRoleSelect={handleRoleSelectFromHero} onOpenWhatsApp={() => setShowWhatsAppDemo(true)} />
+      <HowItWorks />
+      <AIAgentSection />
+      <DSBTSection />
+      <OfflineProofSection />
+      <MultiSigSection />
+      <WhatsAppSection onTryDemo={() => setShowWhatsAppDemo(true)} />
+      <ImpactMetrics />
+      <ContactSection />
       {showWhatsAppDemo && <WhatsAppDemo onClose={() => setShowWhatsAppDemo(false)} />}
     </div>
   );

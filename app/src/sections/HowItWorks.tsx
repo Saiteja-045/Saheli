@@ -65,7 +65,7 @@ export default function HowItWorks() {
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-12">
           <h2 className="hiw-title text-3xl lg:text-4xl font-black font-headline text-on-surface mb-4">
-            How SHG Chain works
+            How Saheli works
           </h2>
           <p className="text-muted-foreground max-w-2xl mx-auto">
             From onboarding to trust-building, our platform simplifies every step of group financial management.
