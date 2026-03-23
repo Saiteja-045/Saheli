@@ -1,0 +1,103 @@
+// ─── API Client for Saheli SHG Chain ─────────────────────────────────────────
+// All backend calls go through this typed client.
+
+const BASE_URL = '/api'; // Vite proxy handles this → http://localhost:3001
+
+async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Network error' }));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+
+  const json = await res.json();
+  return json.data;
+}
+
+// ─── Members ──────────────────────────────────────────────────────────────────
+
+export const membersApi = {
+  getAll: () => apiFetch<any[]>('/members'),
+  getById: (id: string) => apiFetch<any>(`/members/${id}`),
+  getTransactions: (id: string) => apiFetch<any[]>(`/members/${id}/transactions`),
+};
+
+// ─── Transactions ──────────────────────────────────────────────────────────────
+
+export const transactionsApi = {
+  getAll: () => apiFetch<any[]>('/transactions'),
+  getLedger: () => apiFetch<any[]>('/transactions/ledger'),
+  create: (body: { memberId: string; type: string; amount: number; description?: string }) =>
+    apiFetch<any>('/transactions', { method: 'POST', body: JSON.stringify(body) }),
+};
+
+// ─── Loans ────────────────────────────────────────────────────────────────────
+
+export const loansApi = {
+  getAll: () => apiFetch<any[]>('/loans'),
+  getById: (id: string) => apiFetch<any>(`/loans/${id}`),
+  request: (body: { memberId: string; amount: number; purpose: string }) =>
+    apiFetch<any>('/loans/request', { method: 'POST', body: JSON.stringify(body) }),
+  approve: (id: string) =>
+    apiFetch<any>(`/loans/${id}/approve`, { method: 'POST', body: JSON.stringify({}) }),
+};
+
+// ─── Multi-Sig ────────────────────────────────────────────────────────────────
+
+export const multisigApi = {
+  getPending: () => apiFetch<any[]>('/multisig/pending'),
+  getAll: () => apiFetch<any[]>('/multisig'),
+  sign: (id: string, signerId?: string) =>
+    apiFetch<any>(`/multisig/${id}/sign`, { method: 'POST', body: JSON.stringify({ signerId }) }),
+  reject: (id: string) =>
+    apiFetch<any>(`/multisig/${id}/reject`, { method: 'POST', body: JSON.stringify({}) }),
+};
+
+// ─── AI Agent ─────────────────────────────────────────────────────────────────
+
+export const aiAgentApi = {
+  getLog: () => apiFetch<any[]>('/ai-agent/log'),
+  getInsights: () => apiFetch<any>('/ai-agent/insights'),
+  chat: (body: { message: string; memberId?: string; memberName?: string }) =>
+    apiFetch<any>('/ai-agent/chat', { method: 'POST', body: JSON.stringify(body) }),
+};
+
+// ─── QR Code ──────────────────────────────────────────────────────────────────
+
+export const qrApi = {
+  generate: (body: { txHash?: string; memberId?: string; memberName?: string; amount?: number; type?: string }) =>
+    apiFetch<any>('/qr/generate', { method: 'POST', body: JSON.stringify(body) }),
+  verify: (txHash: string) => apiFetch<any>(`/qr/verify/${txHash}`),
+};
+
+// ─── Stats ────────────────────────────────────────────────────────────────────
+
+export const statsApi = {
+  getTreasury: () => apiFetch<any>('/stats/treasury'),
+  getInstitutional: () => apiFetch<any>('/stats/institutional'),
+  getSHGDirectory: () => apiFetch<any[]>('/stats/shg-directory'),
+  getLedger: () => apiFetch<any[]>('/stats/ledger'),
+};
+
+// ─── Autonomous Agent ─────────────────────────────────────────────────────────
+
+export const agentApi = {
+  getStatus: () => apiFetch<any>('/agent/status'),
+  getLog: () => apiFetch<any[]>('/agent/log'),
+  getVaults: () => apiFetch<any>('/agent/vaults'),
+  invest: (amount?: number) =>
+    apiFetch<any>('/agent/invest', { method: 'POST', body: JSON.stringify({ amount }) }),
+  harvest: (vaultId?: string) =>
+    apiFetch<any>('/agent/harvest', { method: 'POST', body: JSON.stringify({ vaultId }) }),
+  emergencyLoan: (body: { memberId?: string; amount: number; purpose?: string }) =>
+    apiFetch<any>('/agent/emergency-loan', { method: 'POST', body: JSON.stringify(body) }),
+  getRepayments: () => apiFetch<any[]>('/agent/repayments'),
+};
+
