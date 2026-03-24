@@ -11,6 +11,60 @@ const router = Router();
 
 const mutableLog: AILogEntry[] = [...aiLog];
 
+async function generateOpenAIWhatsAppReply(args: {
+  message: string;
+  memberName: string;
+}): Promise<string | null> {
+  const openAiKey = process.env.OPENAI_API_KEY;
+  if (!openAiKey) {
+    return null;
+  }
+
+  const model = process.env.OPENAI_CHAT_MODEL || 'gpt-4o-mini';
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${openAiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.4,
+        messages: [
+          {
+            role: 'system',
+            content: [
+              'You are Saheli AI, a WhatsApp assistant for Women SHG finance users in India.',
+              'Keep replies practical, polite, and short (max 120 words).',
+              'If user asks about deposits/withdrawals/loans/balance/QR, guide them with exact next action phrase.',
+              'Never invent transaction IDs or balances.',
+            ].join(' '),
+          },
+          {
+            role: 'user',
+            content: `Member: ${args.memberName}\nMessage: ${args.message}`,
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const json = await response.json() as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+
+    const content = json.choices?.[0]?.message?.content?.trim();
+    return content || null;
+  } catch {
+    return null;
+  }
+}
+
 // Intents the AI agent can parse from WhatsApp messages
 function parseIntent(message: string): {
   intent: 'deposit' | 'withdraw' | 'loan' | 'balance' | 'qr' | 'unknown';
@@ -257,6 +311,17 @@ router.post('/chat', async (req: Request, res: Response) => {
   const intent = parseIntent(message);
   const response = await buildAgentResponse(intent, memberName, memberId);
 
+  // For free-form WhatsApp queries, try a real LLM response and keep deterministic fallback.
+  if (intent.intent === 'unknown') {
+    const llmReply = await generateOpenAIWhatsAppReply({
+      message,
+      memberName,
+    });
+    if (llmReply) {
+      response.reply = llmReply;
+    }
+  }
+
   // Log the interaction
   console.log(`[AI Agent] Member: ${memberName} | Intent: ${intent.intent} | Message: "${message}"`);
 
@@ -267,6 +332,7 @@ router.post('/chat', async (req: Request, res: Response) => {
       originalMessage: message,
       detectedIntent: intent.intent,
       detectedAmount: intent.amount,
+      aiProvider: intent.intent === 'unknown' && process.env.OPENAI_API_KEY ? 'openai+fallback' : 'rules',
       ...response,
     },
   });

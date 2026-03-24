@@ -155,11 +155,22 @@ For WhatsApp + QR media delivery:
 - TWILIO_ACCOUNT_SID
 - TWILIO_AUTH_TOKEN
 - TWILIO_WHATSAPP_FROM (or TWILIO_WHATSAPP_NUMBER)
+- TWILIO_MESSAGING_SERVICE_SID (optional, recommended for production)
+- TWILIO_VALIDATE_SIGNATURE
+- PUBLIC_BASE_URL (required when validating signatures behind tunnels/proxies)
+- TWILIO_STATUS_CALLBACK_URL (optional override)
+- TWILIO_WHATSAPP_CONTENT_SID (optional approved template SID)
 - CLOUDINARY_CLOUD_NAME
 - Either CLOUDINARY_UPLOAD_PRESET, or CLOUDINARY_API_KEY + CLOUDINARY_API_SECRET
 
 Optional voice transcription:
 - OPENAI_API_KEY
+
+For app-wide language translation using Sarvam AI:
+- SARVAM_API_KEY
+- SARVAM_API_URL (optional)
+- SARVAM_API_KEY_HEADER (optional)
+- SARVAM_APP_ID (optional)
 
 ### 3) Run backend
 
@@ -204,6 +215,27 @@ Demo credentials:
 - Supports text and media payload handling
 - If media is audio and OPENAI_API_KEY is set, backend attempts transcription
 - Parsed intent is forwarded to the AI chat route
+- Twilio signature validation is supported (set TWILIO_VALIDATE_SIGNATURE=true)
+- Free-form/unknown intents can use OpenAI chat completion for natural AI replies
+
+### Twilio delivery status callback
+- Endpoint: POST /webhook/twilio/status
+- Captures delivery lifecycle updates (queued, sent, delivered, failed)
+- Configure this URL in Twilio Message status callback settings
+
+## App-Wide Translation (Sarvam)
+
+- Backend endpoints:
+	- POST /api/translate
+	- POST /api/translate/batch
+- Frontend language selector now uses these endpoints to translate the full interface to selected Indian languages.
+- Sarvam API key is kept server-side in backend environment variables.
+
+### Real WhatsApp production notes
+- Use an approved WhatsApp sender (not sandbox-only) before going live
+- If outside 24-hour customer care window, send approved template messages (Content API)
+- Set TWILIO_WHATSAPP_CONTENT_SID for your approved template SID
+- Use TWILIO_MESSAGING_SERVICE_SID if managing multiple WhatsApp senders
 
 ### Automatic QR delivery to member WhatsApp
 - Triggered by QR generation route: POST /api/qr/generate
@@ -242,8 +274,10 @@ Demo credentials:
 ### Flow 2: Emergency/Micro Loan Lifecycle
 1. Member requests loan from member experience
 2. Backend evaluates risk and threshold policy
-3. Leader approves in loan queue
-4. Loan becomes approved and QR can be generated
+3. Member and SHG leaders are notified on WhatsApp about the request
+4. Leader approves in loan queue
+5. On disbursement, member receives WhatsApp approval with tx verification link
+6. Loan becomes approved and QR can be generated
 
 ### Flow 3: Institutional Verification
 1. Bank dashboard opens scanner flow

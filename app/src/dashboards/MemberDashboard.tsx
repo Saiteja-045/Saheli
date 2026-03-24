@@ -20,7 +20,6 @@ import {
   LifeBuoy,
   Bell,
   MessageSquare,
-  Globe,
   Save,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -32,7 +31,7 @@ import LoanRequestModal from '../components/LoanRequestModal';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { useWallet } from '../contexts/WalletContext';
-import { useLanguage, type AppLanguage } from '../contexts/LanguageContext';
+import { useLanguage } from '../contexts/LanguageContext';
 
 // Skeleton loader
 const Skeleton = ({ className = '' }: { className?: string }) => (
@@ -44,13 +43,47 @@ interface MemberDashboardProps {
   onOpenAIAssistant?: () => void;
 }
 
+type MemberSettings = {
+  language: string;
+  whatsappAlerts: boolean;
+  weeklyDigest: boolean;
+};
+
+function getMemberSettingsStorageKey(memberId?: string) {
+  return `saheli-member-settings:${memberId || 'anonymous'}`;
+}
+
+function loadMemberSettings(memberId?: string): MemberSettings | null {
+  try {
+    const raw = localStorage.getItem(getMemberSettingsStorageKey(memberId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<MemberSettings>;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      language: typeof parsed.language === 'string' ? parsed.language : 'English',
+      whatsappAlerts: typeof parsed.whatsappAlerts === 'boolean' ? parsed.whatsappAlerts : true,
+      weeklyDigest: typeof parsed.weeklyDigest === 'boolean' ? parsed.weeklyDigest : true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveMemberSettings(memberId: string | undefined, settings: MemberSettings) {
+  try {
+    localStorage.setItem(getMemberSettingsStorageKey(memberId), JSON.stringify(settings));
+  } catch {
+    // Ignore storage write failures.
+  }
+}
+
 export default function MemberDashboard({ activeSection = 'passport', onOpenAIAssistant }: MemberDashboardProps) {
   const dashboardRef = useRef<HTMLDivElement>(null);
   const [showLoanModal, setShowLoanModal] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [qrData, setQrData] = useState<any>(null);
   const [generatingQR, setGeneratingQR] = useState(false);
-  const [settings, setSettings] = useState({
+  const [settings, setSettings] = useState<MemberSettings>({
     language: 'English',
     whatsappAlerts: true,
     weeklyDigest: true,
@@ -59,8 +92,22 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
 
   const { user } = useAuth();
   const { accountAddress } = useWallet();
-  const { language, setLanguage, t } = useLanguage();
+  const { language, setLanguage, t, languages, getLanguageLabel } = useLanguage();
   const memberId = user?._id || 'm1'; // fallback to m1 only if no user (shouldn't happen)
+
+  useEffect(() => {
+    const saved = loadMemberSettings(memberId);
+    if (saved) {
+      setSettings(saved);
+      if (saved.language !== language) {
+        setLanguage(saved.language as any);
+      }
+      return;
+    }
+
+    setSettings((s) => ({ ...s, language }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memberId]);
 
   const { data: rawMember, loading, error } = useApiFetch(() => membersApi.getById(memberId));
   const { data: repayments } = useApiFetch(() => agentApi.getRepayments());
@@ -86,12 +133,13 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
 
 
   useEffect(() => {
-    if (!loading && member) {
+    const root = dashboardRef.current;
+    if (!loading && member && root && root.querySelector('.dashboard-card')) {
       const ctx = gsap.context(() => {
         gsap.from('.dashboard-card', {
           y: 40, opacity: 0, duration: 0.6, stagger: 0.1, ease: 'power2.out'
         });
-      }, dashboardRef);
+      }, root);
       return () => ctx.revert();
     }
   }, [loading, member]);
@@ -217,23 +265,21 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
         <div className="bg-white border border-border/50 rounded-2xl p-6 space-y-5">
           <div>
             <label className="text-xs font-bold uppercase text-muted-foreground">{t('preferredLanguage', 'Preferred Language')}</label>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              {(['English', 'Hindi', 'Telugu'] as AppLanguage[]).map((lang) => (
-                <button
-                  key={lang}
-                  onClick={() => {
-                    setLanguage(lang);
-                    toast.success(`${t('languageUpdated', 'Language updated')}: ${lang}`);
-                  }}
-                  className={`py-2 rounded-lg border text-sm font-semibold ${settings.language === lang ? 'bg-shg-primary text-white border-shg-primary' : 'border-border hover:bg-surface'}`}
-                >
-                  <span className="inline-flex items-center gap-1">
-                    <Globe className="w-3.5 h-3.5" />
-                    {lang}
-                  </span>
-                </button>
+            <select
+              value={settings.language}
+              onChange={(e) => {
+                const next = e.target.value as typeof language;
+                setLanguage(next);
+                toast.success(`${t('languageUpdated', 'Language updated')}: ${getLanguageLabel(next)}`);
+              }}
+              className="mt-2 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm font-medium text-on-surface focus:outline-none focus:ring-2 focus:ring-shg-primary/30"
+            >
+              {languages.map((lang) => (
+                <option key={lang} value={lang}>
+                  {getLanguageLabel(lang)}
+                </option>
               ))}
-            </div>
+            </select>
           </div>
 
           <div className="flex items-center justify-between p-4 bg-surface rounded-xl">
@@ -263,7 +309,10 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
           </div>
 
           <button
-            onClick={() => toast.success(`${t('savePreferences', 'Save Preferences')} (${settings.language})`) }
+            onClick={() => {
+              saveMemberSettings(memberId, settings);
+              toast.success(`${t('savePreferences', 'Save Preferences')} (${settings.language})`);
+            }}
             className="px-5 py-2.5 bg-shg-primary text-white rounded-xl font-semibold text-sm inline-flex items-center gap-2"
           >
             <Save className="w-4 h-4" />

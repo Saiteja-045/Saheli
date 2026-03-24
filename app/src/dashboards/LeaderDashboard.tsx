@@ -73,10 +73,11 @@ export default function LeaderDashboard({ isReadOnly = false, activeSection = 't
   const { mutate: approveLoan, loading: approvingLoan } = useApiMutation((id: string) => loansApi.approve(id));
 
   useEffect(() => {
-    if (!loadingTreasury) {
+    const root = dashboardRef.current;
+    if (!loadingTreasury && root && root.querySelector('.dashboard-card')) {
       const ctx = gsap.context(() => {
         gsap.from('.dashboard-card', { y: 40, opacity: 0, duration: 0.6, stagger: 0.1, ease: 'power2.out' });
-      }, dashboardRef);
+      }, root);
       return () => ctx.revert();
     }
   }, [loadingTreasury]);

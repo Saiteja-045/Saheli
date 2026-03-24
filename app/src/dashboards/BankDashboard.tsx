@@ -14,7 +14,7 @@ import { gsap } from 'gsap';
 import { useApiFetch, useApiMutation, useApiPolling } from '../hooks/useApi';
 import { qrApi, statsApi } from '../lib/api';
 import { toast } from 'sonner';
-import { useLanguage, type AppLanguage } from '../contexts/LanguageContext';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const Skeleton = ({ className = '' }: { className?: string }) => (
   <div className={`bg-surface animate-pulse rounded-lg ${className}`} />
@@ -31,6 +31,38 @@ interface BankDashboardProps {
   activeSection?: string;
 }
 
+type BankSettings = {
+  preferredLanguage: string;
+  autoAuditAlerts: boolean;
+  grantApproval2FA: boolean;
+};
+
+const BANK_SETTINGS_STORAGE_KEY = 'saheli-bank-settings';
+
+function loadBankSettings(): BankSettings | null {
+  try {
+    const raw = localStorage.getItem(BANK_SETTINGS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<BankSettings>;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      preferredLanguage: typeof parsed.preferredLanguage === 'string' ? parsed.preferredLanguage : 'English',
+      autoAuditAlerts: typeof parsed.autoAuditAlerts === 'boolean' ? parsed.autoAuditAlerts : true,
+      grantApproval2FA: typeof parsed.grantApproval2FA === 'boolean' ? parsed.grantApproval2FA : true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveBankSettings(settings: BankSettings) {
+  try {
+    localStorage.setItem(BANK_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // Ignore storage write failures.
+  }
+}
+
 export default function BankDashboard({ activeSection = 'scanner' }: BankDashboardProps) {
   const dashboardRef = useRef<HTMLDivElement>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -38,12 +70,26 @@ export default function BankDashboard({ activeSection = 'scanner' }: BankDashboa
   const [scanResult, setScanResult] = useState<any>(null);
   const [directoryQuery, setDirectoryQuery] = useState('');
   const [auditFilter, setAuditFilter] = useState<'all' | 'IMMUTABLE_OK' | 'PENDING_AUDIT' | 'FLAGGED'>('all');
-  const [settings, setSettings] = useState({
+  const [settings, setSettings] = useState<BankSettings>({
     preferredLanguage: 'English',
     autoAuditAlerts: true,
     grantApproval2FA: true,
   });
-  const { language, setLanguage, t } = useLanguage();
+  const { language, setLanguage, t, languages, getLanguageLabel } = useLanguage();
+
+  useEffect(() => {
+    const saved = loadBankSettings();
+    if (!saved) {
+      setSettings((s) => ({ ...s, preferredLanguage: language }));
+      return;
+    }
+
+    setSettings(saved);
+    if (saved.preferredLanguage !== language) {
+      setLanguage(saved.preferredLanguage as any);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: stats, loading: loadingStats, refetch: refetchStats } = useApiFetch(() => statsApi.getInstitutional());
   const { data: shgDirectory, loading: loadingDirectory } = useApiFetch(() => statsApi.getSHGDirectory());
@@ -69,10 +115,11 @@ export default function BankDashboard({ activeSection = 'scanner' }: BankDashboa
   }, [shgDirectory, directoryQuery, auditFilter]);
 
   useEffect(() => {
-    if (!loadingStats) {
+    const root = dashboardRef.current;
+    if (!loadingStats && root && root.querySelector('.dashboard-card')) {
       const ctx = gsap.context(() => {
         gsap.from('.dashboard-card', { y: 40, opacity: 0, duration: 0.6, stagger: 0.1, ease: 'power2.out' });
-      }, dashboardRef);
+      }, root);
       return () => ctx.revert();
     }
   }, [loadingStats]);
@@ -147,20 +194,21 @@ export default function BankDashboard({ activeSection = 'scanner' }: BankDashboa
           <p className="text-sm text-muted-foreground">Configure bank-level scanner workflows, audit frequency, and grant release preferences.</p>
           <div>
             <p className="text-xs font-bold uppercase text-muted-foreground mb-2">{t('preferredLanguage', 'Preferred Language')}</p>
-            <div className="grid grid-cols-3 gap-2">
-              {(['English', 'Hindi', 'Telugu'] as AppLanguage[]).map((lang) => (
-                <button
-                  key={lang}
-                  onClick={() => {
-                    setLanguage(lang);
-                    toast.success(`${t('languageUpdated', 'Language updated')}: ${lang}`);
-                  }}
-                  className={`py-2 rounded-lg border text-sm font-semibold ${settings.preferredLanguage === lang ? 'bg-shg-primary text-white border-shg-primary' : 'border-border hover:bg-surface'}`}
-                >
-                  {lang}
-                </button>
+            <select
+              value={settings.preferredLanguage}
+              onChange={(e) => {
+                const next = e.target.value as typeof language;
+                setLanguage(next);
+                toast.success(`${t('languageUpdated', 'Language updated')}: ${getLanguageLabel(next)}`);
+              }}
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm font-medium text-on-surface focus:outline-none focus:ring-2 focus:ring-shg-primary/30"
+            >
+              {languages.map((lang) => (
+                <option key={lang} value={lang}>
+                  {getLanguageLabel(lang)}
+                </option>
               ))}
-            </div>
+            </select>
           </div>
           <div className="flex items-center justify-between p-4 bg-surface rounded-xl">
             <span className="text-sm font-semibold">{t('autoAuditAlerts', 'Auto Audit Alerts')}</span>
@@ -180,7 +228,13 @@ export default function BankDashboard({ activeSection = 'scanner' }: BankDashboa
               <span className={`block w-5 h-5 bg-white rounded-full transition-transform ${settings.grantApproval2FA ? 'translate-x-6' : 'translate-x-0.5'}`} />
             </button>
           </div>
-          <button onClick={() => toast.success('Institution settings saved')} className="px-5 py-2.5 bg-shg-primary text-white rounded-xl font-semibold text-sm inline-flex items-center gap-2">
+          <button
+            onClick={() => {
+              saveBankSettings(settings);
+              toast.success('Institution settings saved');
+            }}
+            className="px-5 py-2.5 bg-shg-primary text-white rounded-xl font-semibold text-sm inline-flex items-center gap-2"
+          >
             <Save className="w-4 h-4" />
             {t('saveSettings', 'Save Settings')}
           </button>
