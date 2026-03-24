@@ -18,6 +18,7 @@ import WhatsAppSection from './sections/WhatsAppSection';
 import ImpactMetrics from './sections/ImpactMetrics';
 import ContactSection from './sections/ContactSection';
 import WhatsAppDemo from './components/WhatsAppDemo';
+import AutoTranslate from './components/AutoTranslate';
 import { useAuth } from './contexts/AuthContext';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -109,6 +110,7 @@ function App() {
   if (view === 'auth') {
     return (
       <>
+        <AutoTranslate />
         <Toaster position="top-right" richColors />
         <AuthPage onSuccess={handleAuthSuccess} />
       </>
@@ -121,6 +123,7 @@ function App() {
 
     return (
       <div className="min-h-screen bg-surface">
+        <AutoTranslate />
         <Toaster position="top-right" richColors />
         <TopNav
           currentRole={safeRole}
@@ -152,6 +155,7 @@ function App() {
   // Landing
   return (
     <div className="min-h-screen bg-surface">
+      <AutoTranslate />
       <Toaster position="top-right" richColors />
       <TopNav />
       <HeroSection onRoleSelect={handleRoleSelectFromHero} onOpenWhatsApp={() => setShowWhatsAppDemo(true)} />

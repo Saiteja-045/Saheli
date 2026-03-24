@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import twilio from 'twilio';
 import { connectDB } from './config/db';
 import { initializeAgentState } from './services/agentEngine';
 
@@ -21,6 +22,8 @@ import aiAgentRouter from './routes/aiAgent';
 import qrcodeRouter from './routes/qrcode';
 import statsRouter from './routes/stats';
 import agentRouter from './routes/agent';
+import translateRouter from './routes/translate';
+import User from './models/User';
 
 const app = express();
 const PORT = Number(process.env.BACKEND_PORT || process.env.PORT || 3001);
@@ -37,6 +40,46 @@ function escapeXml(value: string) {
 function buildTwimlMessage(message: string) {
   const safe = escapeXml(message).slice(0, 1500);
   return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${safe}</Message></Response>`;
+}
+
+function isTwilioSignatureValidationEnabled() {
+  const raw = (process.env.TWILIO_VALIDATE_SIGNATURE || '').trim().toLowerCase();
+  if (!raw) {
+    return process.env.NODE_ENV === 'production';
+  }
+  return ['1', 'true', 'yes', 'on'].includes(raw);
+}
+
+function getPublicRequestUrl(req: express.Request): string {
+  const configuredBase = process.env.PUBLIC_BASE_URL?.trim();
+  if (configuredBase) {
+    return `${configuredBase.replace(/\/$/, '')}${req.originalUrl}`;
+  }
+
+  const forwardedProto = req.header('x-forwarded-proto')?.split(',')[0]?.trim();
+  const protocol = forwardedProto || req.protocol;
+  const host = req.header('x-forwarded-host') || req.header('host') || 'localhost';
+  return `${protocol}://${host}${req.originalUrl}`;
+}
+
+function isValidTwilioRequest(req: express.Request): boolean {
+  if (!isTwilioSignatureValidationEnabled()) {
+    return true;
+  }
+
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const signature = req.header('x-twilio-signature');
+  if (!authToken || !signature) {
+    return false;
+  }
+
+  const requestUrl = getPublicRequestUrl(req);
+  const params = (req.body || {}) as Record<string, string>;
+  return twilio.validateRequest(authToken, signature, requestUrl, params);
+}
+
+function normalizePhoneForLookup(phone: string): string {
+  return phone.replace(/^whatsapp:/i, '').replace(/[^\d]/g, '');
 }
 
 async function transcribeTwilioAudio(mediaUrl: string, contentType?: string): Promise<string | null> {
@@ -106,6 +149,7 @@ app.use('/api/ai-agent', aiAgentRouter);
 app.use('/api/qr', qrcodeRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/agent', agentRouter);
+app.use('/api/translate', translateRouter);
 
 // ─── Health Check ──────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
@@ -137,6 +181,11 @@ app.get('/health', (_req, res) => {
 
 // ─── Twilio WhatsApp Webhook (for production integration) ─────────────────
 app.post('/webhook/whatsapp', async (req, res) => {
+  if (!isValidTwilioRequest(req)) {
+    res.status(403).json({ success: false, error: 'Invalid Twilio signature' });
+    return;
+  }
+
   const {
     Body,
     From,
@@ -166,12 +215,26 @@ app.post('/webhook/whatsapp', async (req, res) => {
 
   let reply = 'Processing your request...';
   try {
+    let resolvedMemberId = 'm1';
+    let resolvedMemberName = ProfileName || 'SHG Member';
+
+    if (From) {
+      const incomingDigits = normalizePhoneForLookup(String(From));
+      const users = await User.find({ role: 'member' }).select('_id name phone').lean();
+      const matched = users.find((u: any) => normalizePhoneForLookup(String(u.phone || '')) === incomingDigits);
+      if (matched) {
+        resolvedMemberId = String(matched._id);
+        resolvedMemberName = matched.name || resolvedMemberName;
+      }
+    }
+
     const aiRes = await fetch(`http://127.0.0.1:${PORT}/api/ai-agent/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message: incomingMessage,
-        memberName: ProfileName || 'SHG Member',
+        memberId: resolvedMemberId,
+        memberName: resolvedMemberName,
       }),
     });
     const json = await aiRes.json() as any;
@@ -189,6 +252,31 @@ app.post('/webhook/whatsapp', async (req, res) => {
 
   res.set('Content-Type', 'text/xml');
   res.send(buildTwimlMessage(reply));
+});
+
+// ─── Twilio Status Callback Webhook (delivery updates) ──────────────────────
+app.post('/webhook/twilio/status', (req, res) => {
+  if (!isValidTwilioRequest(req)) {
+    res.status(403).json({ success: false, error: 'Invalid Twilio signature' });
+    return;
+  }
+
+  const {
+    MessageSid,
+    MessageStatus,
+    To,
+    From,
+    ErrorCode,
+    ErrorMessage,
+  } = req.body;
+
+  console.log(
+    `[Twilio Status] sid=${MessageSid} status=${MessageStatus} to=${To} from=${From}` +
+      `${ErrorCode ? ` errorCode=${ErrorCode}` : ''}` +
+      `${ErrorMessage ? ` error=${ErrorMessage}` : ''}`,
+  );
+
+  res.json({ success: true });
 });
 
 // ─── 404 Handler ────────────────────────────────────────────────────────────

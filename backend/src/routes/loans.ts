@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { loans, members, Loan } from '../data/mockData';
 import { generateTxHash } from '../services/algorand';
+import { sendWhatsAppMessage } from '../services/whatsapp';
 import User from '../models/User';
 import mongoose from 'mongoose';
 
@@ -9,6 +10,30 @@ const router = Router();
 
 // In-memory loan store for mutations
 const mutableLoans: Loan[] = [...loans];
+
+type WhatsAppAttempt = {
+  attempted: boolean;
+  sent: boolean;
+  sid?: string;
+  error?: string;
+};
+
+async function sendWhatsAppSafe(toPhone: string | undefined, body: string): Promise<WhatsAppAttempt> {
+  if (!toPhone) {
+    return { attempted: false, sent: false, error: 'Member phone number unavailable' };
+  }
+
+  try {
+    const result = await sendWhatsAppMessage({ toPhone, body });
+    return { attempted: true, sent: true, sid: result.sid };
+  } catch (error) {
+    return {
+      attempted: true,
+      sent: false,
+      error: error instanceof Error ? error.message : 'WhatsApp send failed',
+    };
+  }
+}
 
 function evaluateLoan(trustScore: number, amount: number, purpose: string): {
   recommendation: 'approve' | 'review' | 'reject';
@@ -80,6 +105,8 @@ router.post('/request', async (req: Request, res: Response) => {
   const legacyMember = members.find(m => m.id === memberId);
   let memberName = legacyMember?.name;
   let trustScore = legacyMember?.trustScore;
+  let memberPhone = legacyMember?.phone;
+  let memberShgId = legacyMember?.shgId;
 
   if (!legacyMember && mongoose.Types.ObjectId.isValid(memberId)) {
     const dbMember = await User.findById(memberId).select('name trustScore role').lean();
@@ -89,6 +116,8 @@ router.post('/request', async (req: Request, res: Response) => {
     }
     memberName = dbMember.name;
     trustScore = dbMember.trustScore || 650;
+    memberPhone = dbMember.phone;
+    memberShgId = dbMember.shgId || undefined;
   }
 
   if (!memberName || trustScore === undefined) {
@@ -116,11 +145,54 @@ router.post('/request', async (req: Request, res: Response) => {
 
   mutableLoans.unshift(newLoan);
 
+  const whatsappToMember = await sendWhatsAppSafe(
+    memberPhone,
+    [
+      `Namaste ${memberName}, your loan request has been submitted.`,
+      `Amount: Rs ${Number(amount).toLocaleString('en-IN')}`,
+      `Purpose: ${purpose}`,
+      `Status: Pending leader approval (${newLoan.approvalsRequired}-of-${newLoan.approvalsRequired})`,
+    ].join('\n'),
+  );
+
+  const leaderFilter: Record<string, string> = { role: 'leader' };
+  if (memberShgId) {
+    leaderFilter.shgId = memberShgId;
+  }
+
+  const leaders = await User.find(leaderFilter).select('name phone').lean();
+  const leaderSends = await Promise.allSettled(
+    leaders
+      .map((leader: any) => leader.phone)
+      .filter(Boolean)
+      .map((leaderPhone: string) =>
+        sendWhatsAppSafe(
+          leaderPhone,
+          [
+            'New SHG loan request needs approval.',
+            `Member: ${memberName}`,
+            `Amount: Rs ${Number(amount).toLocaleString('en-IN')}`,
+            `Purpose: ${purpose}`,
+            `Recommendation: ${evaluation.recommendation.toUpperCase()}`,
+          ].join('\n'),
+        ),
+      ),
+  );
+
+  const leaderNotifications = {
+    attempted: leaderSends.length,
+    sent: leaderSends.filter(s => s.status === 'fulfilled' && s.value.sent).length,
+  };
+
   res.status(201).json({
     success: true,
     data: {
       loan: newLoan,
       evaluation,
+      whatsapp: {
+        member: whatsappToMember,
+        leaders: leaderNotifications,
+      },
       message: `📋 Loan request submitted. Leader approval is required before funds are disbursed and QR proof is generated.`,
     },
   });
@@ -148,14 +220,47 @@ router.post('/:id/approve', (req: Request, res: Response) => {
     loan.dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
   }
 
-  res.json({
-    success: true,
-    data: {
-      loan,
-      message: loan.status === 'approved'
-        ? `✅ Multi-sig threshold reached! Funds disbursed on Algorand.`
-        : `✍️ Approval ${loan.approvals}/${loan.approvalsRequired} recorded.`,
-    },
+  const sendResponse = async () => {
+    let whatsapp: WhatsAppAttempt = { attempted: false, sent: false };
+
+    if (loan.status === 'approved') {
+      const legacyMember = members.find(m => m.id === loan.memberId);
+      let memberPhone = legacyMember?.phone;
+
+      if (!memberPhone && mongoose.Types.ObjectId.isValid(loan.memberId)) {
+        const dbMember = await User.findById(loan.memberId).select('phone').lean();
+        memberPhone = dbMember?.phone;
+      }
+
+      whatsapp = await sendWhatsAppSafe(
+        memberPhone,
+        [
+          `Good news ${loan.memberName}!`,
+          `Your loan is approved and disbursed.`,
+          `Amount: Rs ${loan.amount.toLocaleString('en-IN')}`,
+          `Tx: ${loan.txHash}`,
+          `Verify: https://testnet.algoexplorer.io/tx/${loan.txHash}`,
+        ].join('\n'),
+      );
+    }
+
+    res.json({
+      success: true,
+      data: {
+        loan,
+        whatsapp,
+        message: loan.status === 'approved'
+          ? `✅ Multi-sig threshold reached! Funds disbursed on Algorand.`
+          : `✍️ Approval ${loan.approvals}/${loan.approvalsRequired} recorded.`,
+      },
+    });
+  };
+
+  sendResponse().catch((error: unknown) => {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to send approval response',
+    });
   });
 });
 
