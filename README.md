@@ -300,12 +300,5 @@ cd backend
 npm run build
 ```
 
-## Known Demo Constraints
 
-- Some blockchain operations are intentionally mocked for deterministic judging demos
-- Twilio WhatsApp delivery requires valid sender setup and approved destination policy
-- Cloudinary delivery requires working cloud credentials or upload preset
 
-## Pitch Positioning (Suggested)
-
-"We made Web3 invisible. Rural women interact via WhatsApp voice/text, while institutions get auditable on-chain proofs, governed approvals, and AI-assisted treasury intelligence."
