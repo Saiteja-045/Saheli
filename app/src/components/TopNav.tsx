@@ -1,8 +1,9 @@
-import { Search, Bell, Bot, User, Menu, X, Wallet, LogOut } from 'lucide-react';
+import { Search, Bell, Bot, User, Menu, X, Wallet, LogOut, Unplug } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useWallet } from '../contexts/WalletContext';
 import { useApiPolling } from '../hooks/useApi';
 import { aiAgentApi } from '../lib/api';
+import { toast } from 'sonner';
 
 type UserRole = 'member' | 'leader' | 'bank';
 
@@ -11,13 +12,16 @@ interface TopNavProps {
   authRole?: UserRole;
   onOpenAIAssistant?: () => void;
   onSignOut?: () => void;
+  onSectionSearch?: (query: string) => void;
 }
 
-export default function TopNav({ currentRole, onOpenAIAssistant, onSignOut }: TopNavProps) {
+export default function TopNav({ currentRole, onOpenAIAssistant, onSignOut, onSectionSearch }: TopNavProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
   const [lastOpenedAt, setLastOpenedAt] = useState(0);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   const roleLabels: Record<UserRole, string> = {
     member: 'Member',
@@ -44,6 +48,16 @@ export default function TopNav({ currentRole, onOpenAIAssistant, onSignOut }: To
 
   const unreadCount = notifications.filter((n) => n.timestamp > lastOpenedAt).length;
 
+  const runSearch = () => {
+    const q = searchQuery.trim();
+    if (!q) {
+      toast.error('Enter a search term');
+      return;
+    }
+    onSectionSearch?.(q);
+    toast.success(`Searching for "${q}"`);
+  };
+
   return (
     <nav className="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-xl border-b border-border/50">
       <div className="flex justify-between items-center px-4 lg:px-6 py-3 w-full">
@@ -67,9 +81,17 @@ export default function TopNav({ currentRole, onOpenAIAssistant, onSignOut }: To
             <input
               type="text"
               placeholder={currentRole ? 'Search transactions...' : 'Search SHG or d-SBT ID...'}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               className="bg-transparent border-none text-sm w-full py-2 px-2 focus:outline-none"
               onFocus={() => setSearchOpen(true)}
               onBlur={() => setSearchOpen(false)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  runSearch();
+                }
+              }}
             />
           </div>
 
@@ -114,17 +136,32 @@ export default function TopNav({ currentRole, onOpenAIAssistant, onSignOut }: To
 
           {/* Account / Wallet */}
           {isConnected && accountAddress ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 relative">
               <span className="hidden md:inline-block text-xs font-medium text-shg-primary bg-shg-primary/10 px-2 py-1 rounded-md">
                 {formatAddress(accountAddress)}
               </span>
               <button
-                onClick={disconnectWallet}
+                onClick={() => setShowProfileMenu((v) => !v)}
                 className="w-8 h-8 rounded-full bg-shg-primary/10 flex items-center justify-center hover:bg-shg-primary/20 transition-colors"
-                title="Disconnect Wallet"
+                title="Profile"
               >
                 <User className="w-4 h-4 text-shg-primary" />
               </button>
+              {showProfileMenu && (
+                <div className="absolute right-0 top-10 w-48 bg-white border border-border rounded-xl shadow-lg p-1.5 z-50">
+                  <div className="px-2 py-1.5 text-[11px] text-muted-foreground">Connected: {formatAddress(accountAddress)}</div>
+                  <button
+                    onClick={() => {
+                      disconnectWallet();
+                      setShowProfileMenu(false);
+                    }}
+                    className="w-full flex items-center gap-2 px-2 py-2 text-sm rounded-lg hover:bg-surface text-left"
+                  >
+                    <Unplug className="w-4 h-4 text-muted-foreground" />
+                    Disconnect Wallet
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <button

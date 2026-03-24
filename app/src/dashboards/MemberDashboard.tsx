@@ -32,6 +32,7 @@ import LoanRequestModal from '../components/LoanRequestModal';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { useWallet } from '../contexts/WalletContext';
+import { useLanguage, type AppLanguage } from '../contexts/LanguageContext';
 
 // Skeleton loader
 const Skeleton = ({ className = '' }: { className?: string }) => (
@@ -54,9 +55,11 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
     whatsappAlerts: true,
     weeklyDigest: true,
   });
+  const [auditQuery, setAuditQuery] = useState('');
 
   const { user } = useAuth();
   const { accountAddress } = useWallet();
+  const { language, setLanguage, t } = useLanguage();
   const memberId = user?._id || 'm1'; // fallback to m1 only if no user (shouldn't happen)
 
   const { data: rawMember, loading, error } = useApiFetch(() => membersApi.getById(memberId));
@@ -76,6 +79,10 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
     transactions: rawMember.transactions || [],
     badges: rawMember.badges || ['New Member'],
   } : null;
+
+  useEffect(() => {
+    setSettings((s) => ({ ...s, language }));
+  }, [language]);
 
 
   useEffect(() => {
@@ -204,17 +211,20 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
     return (
       <div className="p-6 lg:p-10 max-w-4xl mx-auto space-y-6">
         <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-shg-primary mb-2">Preferences</p>
-          <h2 className="text-2xl font-black font-headline text-on-surface">Settings</h2>
+          <p className="text-xs font-bold uppercase tracking-wider text-shg-primary mb-2">{t('preferences', 'Preferences')}</p>
+          <h2 className="text-2xl font-black font-headline text-on-surface">{t('settings', 'Settings')}</h2>
         </div>
         <div className="bg-white border border-border/50 rounded-2xl p-6 space-y-5">
           <div>
-            <label className="text-xs font-bold uppercase text-muted-foreground">Preferred Language</label>
+            <label className="text-xs font-bold uppercase text-muted-foreground">{t('preferredLanguage', 'Preferred Language')}</label>
             <div className="mt-2 grid grid-cols-3 gap-2">
-              {['English', 'Hindi', 'Telugu'].map((lang) => (
+              {(['English', 'Hindi', 'Telugu'] as AppLanguage[]).map((lang) => (
                 <button
                   key={lang}
-                  onClick={() => setSettings((s) => ({ ...s, language: lang }))}
+                  onClick={() => {
+                    setLanguage(lang);
+                    toast.success(`${t('languageUpdated', 'Language updated')}: ${lang}`);
+                  }}
                   className={`py-2 rounded-lg border text-sm font-semibold ${settings.language === lang ? 'bg-shg-primary text-white border-shg-primary' : 'border-border hover:bg-surface'}`}
                 >
                   <span className="inline-flex items-center gap-1">
@@ -229,7 +239,7 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
           <div className="flex items-center justify-between p-4 bg-surface rounded-xl">
             <div className="flex items-center gap-2 text-sm font-semibold">
               <Bell className="w-4 h-4 text-shg-primary" />
-              WhatsApp Alerts
+              {t('whatsappAlerts', 'WhatsApp Alerts')}
             </div>
             <button
               onClick={() => setSettings((s) => ({ ...s, whatsappAlerts: !s.whatsappAlerts }))}
@@ -242,7 +252,7 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
           <div className="flex items-center justify-between p-4 bg-surface rounded-xl">
             <div className="flex items-center gap-2 text-sm font-semibold">
               <CalendarClock className="w-4 h-4 text-shg-primary" />
-              Weekly Financial Digest
+              {t('weeklyDigest', 'Weekly Financial Digest')}
             </div>
             <button
               onClick={() => setSettings((s) => ({ ...s, weeklyDigest: !s.weeklyDigest }))}
@@ -253,12 +263,76 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
           </div>
 
           <button
-            onClick={() => toast.success('Settings saved successfully')}
+            onClick={() => toast.success(`${t('savePreferences', 'Save Preferences')} (${settings.language})`) }
             className="px-5 py-2.5 bg-shg-primary text-white rounded-xl font-semibold text-sm inline-flex items-center gap-2"
           >
             <Save className="w-4 h-4" />
-            Save Preferences
+            {t('savePreferences', 'Save Preferences')}
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeSection === 'treasury') {
+    return (
+      <div className="p-6 lg:p-10 max-w-5xl mx-auto space-y-6">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-shg-primary mb-2">Member Treasury View</p>
+          <h2 className="text-2xl font-black font-headline text-on-surface">Savings and Loan Snapshot</h2>
+        </div>
+        <div className="bg-white border border-border/50 rounded-2xl p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="p-4 bg-surface rounded-xl border border-border/40">
+            <p className="text-xs font-bold uppercase text-muted-foreground">Total Savings</p>
+            <p className="text-xl font-black mt-2">₹{member?.totalSavings?.toLocaleString('en-IN') || 0}</p>
+          </div>
+          <div className="p-4 bg-surface rounded-xl border border-border/40">
+            <p className="text-xs font-bold uppercase text-muted-foreground">Active Loans</p>
+            <p className="text-xl font-black mt-2">₹{member?.activeLoansAmount?.toLocaleString('en-IN') || 0}</p>
+          </div>
+          <div className="p-4 bg-surface rounded-xl border border-border/40">
+            <p className="text-xs font-bold uppercase text-muted-foreground">Yield Earned</p>
+            <p className="text-xl font-black mt-2">₹{member?.yieldEarned?.toLocaleString('en-IN') || 0}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeSection === 'audit') {
+    const rows = (member?.transactions || []).filter((tx: any) => {
+      const q = auditQuery.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        String(tx.description || '').toLowerCase().includes(q) ||
+        String(tx.txHash || '').toLowerCase().includes(q) ||
+        String(tx.type || '').toLowerCase().includes(q)
+      );
+    });
+
+    return (
+      <div className="p-6 lg:p-10 max-w-5xl mx-auto space-y-6">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-shg-primary mb-2">Immutable Audit Trail</p>
+            <h2 className="text-2xl font-black font-headline text-on-surface">On-Chain Activity Logs</h2>
+          </div>
+          <input
+            value={auditQuery}
+            onChange={(e) => setAuditQuery(e.target.value)}
+            placeholder="Search by tx hash, type, or description"
+            className="w-full max-w-sm border border-border rounded-xl px-3 py-2 text-sm"
+          />
+        </div>
+        <div className="bg-white border border-border/50 rounded-2xl divide-y divide-border/40">
+          {rows.length === 0 ? (
+            <p className="p-6 text-sm text-muted-foreground">No matching logs found.</p>
+          ) : rows.map((tx: any) => (
+            <div key={tx.id} className="p-4">
+              <p className="text-sm font-semibold text-on-surface">{tx.description}</p>
+              <p className="text-xs text-muted-foreground mt-1">{tx.type} · TX {String(tx.txHash || '').slice(0, 20)}...</p>
+            </div>
+          ))}
         </div>
       </div>
     );
