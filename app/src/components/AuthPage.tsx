@@ -53,7 +53,7 @@ const ROLES = [
 ];
 
 export default function AuthPage({ onSuccess }: AuthPageProps) {
-  const { login, register } = useAuth();
+  const { login, register, logout } = useAuth();
   const [mode, setMode] = useState<Mode>('login');
   const [role, setRole] = useState<Role>('member');
   const [showPass, setShowPass] = useState(false);
@@ -73,6 +73,11 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
     try {
       if (mode === 'login') {
         const user = await login(form.phone, form.password);
+        if ((user.role as Role) !== role) {
+          logout();
+          toast.error(`This number is registered as ${user.role.toUpperCase()}, not ${role.toUpperCase()}. Please select the correct role.`);
+          return;
+        }
         toast.success(`Welcome back, ${user.name}! 🌟`);
         onSuccess(user.role as Role);
       } else {

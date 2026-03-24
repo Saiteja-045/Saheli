@@ -41,6 +41,12 @@ function getDefaultSection(role: UserRole): DashboardSection {
   return 'scanner';
 }
 
+function getRoleSections(role: UserRole): DashboardSection[] {
+  if (role === 'member') return ['passport', 'treasury', 'audit', 'ai', 'auto-repayment', 'settings', 'support'];
+  if (role === 'leader') return ['treasury', 'audit', 'ai', 'settings', 'support'];
+  return ['scanner', 'audit', 'grants', 'settings', 'support'];
+}
+
 function App() {
   const { user, loading, logout } = useAuth();
   const [view, setView] = useState<AppView>('landing');
@@ -78,6 +84,17 @@ function App() {
     setView('auth');
   };
 
+  const handleSectionSearch = (query: string) => {
+    if (!user) return;
+    const q = query.toLowerCase().trim();
+    if (!q) return;
+    const sections = getRoleSections(user.role as UserRole);
+    const match = sections.find((s) => s.toLowerCase().includes(q));
+    if (match) {
+      setActiveSection(match);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
@@ -110,6 +127,7 @@ function App() {
           authRole={authRole}
           onOpenAIAssistant={() => setShowWhatsAppDemo(true)}
           onSignOut={handleSignOut}
+          onSectionSearch={handleSectionSearch}
         />
         <Sidebar
           currentRole={safeRole}

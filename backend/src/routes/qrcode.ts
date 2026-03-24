@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import QRCode from 'qrcode';
-import { verifyTransaction, generateTxHash } from '../services/algorand';
+import { verifyTransaction, generateTxHash, registerTransactionLifecycle } from '../services/algorand';
 import { members } from '../data/mockData';
 import { sendQRCodeWhatsAppReceipt } from '../services/whatsapp';
 
@@ -21,9 +21,16 @@ router.post('/generate', async (req: Request, res: Response) => {
     } = req.body;
 
     const hash = txHash || generateTxHash();
+    registerTransactionLifecycle({
+      txHash: hash,
+      type: type || 'identity_proof',
+      amount: Number(amount || 0),
+      initialStatus: 'confirmed',
+      autoConfirm: false,
+    });
     const walletDeepLink = walletAddress
-      ? `algorand://${walletAddress}?amount=0&note=${encodeURIComponent(`saheli:${hash}`)}`
-      : undefined;
+      ? `algorand://${walletAddress}?note=${encodeURIComponent(`saheli:${hash}`)}`
+      : `https://perawallet.app/`;
 
     // Build the QR payload — this is what gets embedded in the QR code
     const qrPayload = JSON.stringify({
@@ -115,9 +122,9 @@ router.post('/generate', async (req: Request, res: Response) => {
 });
 
 // GET /api/qr/verify/:txHash
-router.get('/verify/:txHash', (req: Request, res: Response) => {
+router.get('/verify/:txHash', async (req: Request, res: Response) => {
   const { txHash } = req.params;
-  const result = verifyTransaction(txHash);
+  const result = await verifyTransaction(txHash);
 
   res.json({
     success: true,

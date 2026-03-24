@@ -21,6 +21,8 @@ export default function QRCodeDisplay({
   walletDeepLink,
   compact = false,
 }: QRCodeDisplayProps) {
+  const walletLink = walletDeepLink || 'https://perawallet.app/';
+
   const handleDownload = () => {
     const a = document.createElement('a');
     a.href = qrCode;
@@ -39,9 +41,9 @@ export default function QRCodeDisplay({
         <p className="text-[10px] font-mono text-muted-foreground text-center">
           {txHash.slice(0, 24)}...
         </p>
-        {walletDeepLink && (
+        {walletLink && (
           <a
-            href={walletDeepLink}
+            href={walletLink}
             className="mt-2 text-[10px] font-bold text-shg-primary hover:underline"
           >
             Open in Pera Wallet
@@ -114,9 +116,9 @@ export default function QRCodeDisplay({
           <ExternalLink className="w-4 h-4" />
           Verify
         </a>
-        {walletDeepLink && (
+        {walletLink && (
           <a
-            href={walletDeepLink}
+            href={walletLink}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-border rounded-xl text-sm font-semibold hover:bg-surface transition-colors"
           >
             Open in Pera

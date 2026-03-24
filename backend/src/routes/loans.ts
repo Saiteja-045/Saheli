@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { loans, members, Loan } from '../data/mockData';
 import { generateTxHash } from '../services/algorand';
+import User from '../models/User';
+import mongoose from 'mongoose';
 
 const router = Router();
 
@@ -67,7 +69,7 @@ router.get('/:id', (req: Request, res: Response) => {
 });
 
 // POST /api/loans/request
-router.post('/request', (req: Request, res: Response) => {
+router.post('/request', async (req: Request, res: Response) => {
   const { memberId, amount, purpose } = req.body;
 
   if (!memberId || !amount || !purpose) {
@@ -75,22 +77,35 @@ router.post('/request', (req: Request, res: Response) => {
     return;
   }
 
-  const member = members.find(m => m.id === memberId);
-  if (!member) {
+  const legacyMember = members.find(m => m.id === memberId);
+  let memberName = legacyMember?.name;
+  let trustScore = legacyMember?.trustScore;
+
+  if (!legacyMember && mongoose.Types.ObjectId.isValid(memberId)) {
+    const dbMember = await User.findById(memberId).select('name trustScore role').lean();
+    if (!dbMember || dbMember.role !== 'member') {
+      res.status(404).json({ success: false, error: 'Member not found' });
+      return;
+    }
+    memberName = dbMember.name;
+    trustScore = dbMember.trustScore || 650;
+  }
+
+  if (!memberName || trustScore === undefined) {
     res.status(404).json({ success: false, error: 'Member not found' });
     return;
   }
 
-  const evaluation = evaluateLoan(member.trustScore, amount, purpose);
+  const evaluation = evaluateLoan(trustScore, amount, purpose);
 
   const newLoan: Loan = {
     id: uuidv4(),
     memberId,
-    memberName: member.name,
+    memberName,
     amount,
     purpose,
     status: 'pending',
-    trustScoreAtApplication: member.trustScore,
+    trustScoreAtApplication: trustScore,
     aiRecommendation: evaluation.recommendation,
     aiReason: evaluation.reason,
     approvals: 0,
