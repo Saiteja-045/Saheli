@@ -10,7 +10,6 @@ const userSchema = new mongoose.Schema(
     shgId: { type: String },
     
     // Stats (from previous mock data compatibility)
-    did: { type: String },
     trustScore: { type: Number, default: 750 },
     trustGrade: { type: String, default: 'GOOD' },
     totalSavings: { type: Number, default: 0 },

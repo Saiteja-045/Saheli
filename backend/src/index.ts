@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
 import { connectDB } from './config/db';
 import { initializeAgentState } from './services/agentEngine';
 
@@ -24,6 +26,16 @@ import agentRouter from './routes/agent';
 
 const app = express();
 const PORT = Number(process.env.BACKEND_PORT || process.env.PORT || 3001);
+const FRONTEND_DIST_PATH = process.env.FRONTEND_DIST_PATH || path.resolve(__dirname, '../../app/dist');
+
+const allowedOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+if (process.env.NODE_ENV !== 'production' && allowedOrigins.length === 0) {
+  allowedOrigins.push('http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000');
+}
 
 function escapeXml(value: string) {
   return value
@@ -82,7 +94,13 @@ async function transcribeTwilioAudio(mediaUrl: string, contentType?: string): Pr
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000'],
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));
@@ -107,6 +125,10 @@ app.use('/api/qr', qrcodeRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/agent', agentRouter);
 
+if (fs.existsSync(FRONTEND_DIST_PATH)) {
+  app.use(express.static(FRONTEND_DIST_PATH));
+}
+
 // ─── Health Check ──────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
   res.json({
@@ -127,7 +149,7 @@ app.get('/health', (_req, res) => {
       'GET  /api/ai-agent/log',
       'POST /api/ai-agent/chat',
       'POST /api/qr/generate',
-      'GET  /api/qr/verify/:txHash',
+      'GET  /api/qr/verify/:transactionId',
       'GET  /api/stats/treasury',
       'GET  /api/stats/institutional',
       'GET  /api/stats/shg-directory',
@@ -179,8 +201,7 @@ app.post('/webhook/whatsapp', async (req, res) => {
     if (agentData?.reply) {
       reply = agentData.reply;
       if (agentData.txHash) {
-        reply += `\n\nTX: ${agentData.txHash}`;
-        reply += `\nVerify: https://testnet.algoexplorer.io/tx/${agentData.txHash}`;
+        reply += `\n\nRef: ${agentData.txHash}`;
       }
     }
   } catch {
@@ -193,6 +214,10 @@ app.post('/webhook/whatsapp', async (req, res) => {
 
 // ─── 404 Handler ────────────────────────────────────────────────────────────
 app.use((_req, res) => {
+  if (!_req.path.startsWith('/api') && !_req.path.startsWith('/webhook') && fs.existsSync(FRONTEND_DIST_PATH)) {
+    res.sendFile(path.join(FRONTEND_DIST_PATH, 'index.html'));
+    return;
+  }
   res.status(404).json({ success: false, error: 'Endpoint not found' });
 });
 

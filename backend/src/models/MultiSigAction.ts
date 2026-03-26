@@ -18,7 +18,7 @@ const multiSigActionSchema = new mongoose.Schema(
     linkedLoanId: { type: String },
     destinationRole: { type: String, enum: ['leader', 'bank'], default: 'leader' },
     createdAt: { type: String, required: true },
-    txHash: { type: String },
+    transactionId: { type: String },
   },
   { timestamps: true },
 );

@@ -142,10 +142,10 @@ export default function MultiSigSection() {
               Security First
             </span>
             <h2 className="text-3xl lg:text-4xl font-black font-headline text-on-surface mb-4">
-              Joint-Account Security
+              Role-Based Approvals
             </h2>
             <p className="text-muted-foreground mb-8 leading-relaxed">
-              Large withdrawals require multiple leaders to approve. Rules are enforced by smart contracts—transparent, tamper-proof, and fair.
+              Large withdrawals require multiple leaders to approve. Rules are enforced by strict system policies—transparent, auditable, and fair.
             </p>
 
             <div className="grid grid-cols-2 gap-4 mb-8">
@@ -160,7 +160,7 @@ export default function MultiSigSection() {
                 <div className="w-10 h-10 bg-shg-secondary/10 rounded-lg flex items-center justify-center mb-3">
                   <Lock className="w-5 h-5 text-shg-secondary" />
                 </div>
-                <p className="font-bold text-on-surface text-sm">Smart Contract</p>
+                <p className="font-bold text-on-surface text-sm">System Policy</p>
                 <p className="text-xs text-muted-foreground">Immutable rules</p>
               </div>
             </div>

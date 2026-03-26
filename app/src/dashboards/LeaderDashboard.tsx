@@ -54,7 +54,7 @@ export default function LeaderDashboard({ isReadOnly = false, activeSection = 't
   const [investing, setInvesting] = useState(false);
   const [harvesting, setHarvesting] = useState(false);
   const [showTxModal, setShowTxModal] = useState(false);
-  const [txForm, setTxForm] = useState({ memberId: 'm1', type: 'deposit', amount: '', description: '' });
+  const [txForm, setTxForm] = useState({ memberId: '', type: 'deposit', amount: '', description: '' });
   const [loanQRCodes, setLoanQRCodes] = useState<Record<string, any>>({});
   const [settings, setSettings] = useState({ emergencyAlerts: true, dailyDigest: true });
 
@@ -70,6 +70,13 @@ export default function LeaderDashboard({ isReadOnly = false, activeSection = 't
   const { mutate: rejectAction } = useApiMutation((id: string) => multisigApi.reject(id));
   const { mutate: createTransaction, loading: creatingTx } = useApiMutation((body: any) => transactionsApi.create(body));
   const { mutate: approveLoan, loading: approvingLoan } = useApiMutation((id: string) => loansApi.approve(id));
+
+  useEffect(() => {
+    if (!txForm.memberId && members && members.length > 0) {
+      const firstMemberId = members[0]._id || members[0].id || '';
+      setTxForm((prev) => ({ ...prev, memberId: firstMemberId }));
+    }
+  }, [members, txForm.memberId]);
 
   useEffect(() => {
     if (!loadingTreasury) {
@@ -133,7 +140,7 @@ export default function LeaderDashboard({ isReadOnly = false, activeSection = 't
       ['Section', 'Metric', 'Value'],
       ['Treasury', 'Total Liquidity', String(treasury?.totalLiquidity || 0)],
       ['Treasury', 'Yield This Month', String(treasury?.yieldThisMonth || 0)],
-      ['Approvals', 'Pending Multi-sig Actions', String((pendingActions || []).length)],
+      ['Approvals', 'Pending Leader Approvals', String((pendingActions || []).length)],
       ['Loans', 'Pending Loan Requests', String((loans || []).filter((l: any) => l.status === 'pending').length)],
       ['Loans', 'Approved Loans', String((loans || []).filter((l: any) => l.status === 'approved').length)],
     ];
@@ -162,7 +169,7 @@ export default function LeaderDashboard({ isReadOnly = false, activeSection = 't
         amount,
         description: txForm.description || `Leader initiated ${txForm.type}`,
       });
-      toast.success('Transaction created on-chain');
+      toast.success('Transaction created successfully');
       setShowTxModal(false);
       setTxForm({ memberId: txForm.memberId, type: 'deposit', amount: '', description: '' });
     } catch {
@@ -181,13 +188,13 @@ export default function LeaderDashboard({ isReadOnly = false, activeSection = 't
   };
 
   const handleGenerateLoanQR = async (loan: any) => {
-    if (loan.status !== 'approved' || !loan.txHash) {
+    if (loan.status !== 'approved' || !loan.transactionId) {
       toast.error('Loan must be approved before generating QR');
       return;
     }
     try {
       const qr = await qrApi.generate({
-        txHash: loan.txHash,
+        transactionId: loan.transactionId,
         memberId: loan.memberId,
         memberName: loan.memberName,
         amount: loan.amount,
@@ -390,12 +397,10 @@ export default function LeaderDashboard({ isReadOnly = false, activeSection = 't
                   <div className="mt-3">
                     <QRCodeDisplay
                       qrCode={loanQRCodes[loan.id].qrCode}
-                      txHash={loanQRCodes[loan.id].txHash}
-                      explorerUrl={loanQRCodes[loan.id].explorerUrl}
+                      transactionId={loanQRCodes[loan.id].transactionId}
                       amount={loan.amount}
                       memberName={loan.memberName}
                       type="loan_disbursement"
-                      walletDeepLink={loanQRCodes[loan.id].walletDeepLink}
                       compact={true}
                     />
                   </div>
@@ -413,7 +418,7 @@ export default function LeaderDashboard({ isReadOnly = false, activeSection = 't
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold font-headline text-on-surface flex items-center gap-2">
               <Shield className="w-5 h-5 text-shg-primary" />
-              Multi-Sig Pending Actions
+              Multi-Leader Pending Actions
             </h3>
             {!loadingActions && (
               <span className="px-3 py-1 bg-shg-tertiary/10 text-shg-tertiary rounded-full text-xs font-bold">
@@ -561,7 +566,7 @@ export default function LeaderDashboard({ isReadOnly = false, activeSection = 't
           </div>
           <div>
             <h2 className="text-xl font-black font-headline text-on-surface">AI Vault Manager</h2>
-            <p className="text-xs text-muted-foreground">Autonomous idle fund deployment via Folks Finance · Tinyman · Algofi</p>
+            <p className="text-xs text-muted-foreground">Autonomous idle fund deployment via Internal Vaults</p>
           </div>
           <div className="ml-auto flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold" style={{ background: '#10b98115', color: '#059669' }}>
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -587,7 +592,7 @@ export default function LeaderDashboard({ isReadOnly = false, activeSection = 't
           </div>
           <div>
             <h2 className="text-xl font-black font-headline text-on-surface">Agent Terminal</h2>
-            <p className="text-xs text-muted-foreground">Live autonomous agent activity log · Algorand testnet</p>
+            <p className="text-xs text-muted-foreground">Live autonomous agent activity log · Internal Server</p>
           </div>
           <span className="ml-auto text-[10px] font-bold text-gray-400 font-mono">
             polling every 6s
@@ -612,14 +617,14 @@ export default function LeaderDashboard({ isReadOnly = false, activeSection = 't
         </div>
         <div className="absolute inset-0 flex items-center px-8 lg:px-12">
           <div className="max-w-lg space-y-3">
-            <h2 className="text-2xl lg:text-3xl font-black text-white font-headline">Village Ledger Node #4021</h2>
+            <h2 className="text-2xl lg:text-3xl font-black text-white font-headline">Village Treasury</h2>
             <p className="text-white/80 text-sm leading-relaxed">
-              Treasury secured by decentralized multi-sig · AI agent auto-invests idle funds · Every action immutable on Algorand.
+              Treasury secured by multi-leader approvals · AI agent auto-invests idle funds · Every action securely recorded in the database.
             </p>
             <div className="flex items-center gap-2 text-shg-secondary">
               <Shield className="w-4 h-4" />
               <span className="text-xs font-bold uppercase tracking-wider">
-                {treasury?.totalYieldGenerated ? `₹${treasury.totalYieldGenerated.toLocaleString('en-IN')} yield generated` : 'Live on Algorand Testnet'}
+                {treasury?.totalYieldGenerated ? `₹${treasury.totalYieldGenerated.toLocaleString('en-IN')} yield generated` : 'Live on Secure Server'}
               </span>
             </div>
           </div>

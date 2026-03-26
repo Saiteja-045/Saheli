@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { X, Brain, Zap, AlertCircle, CheckCircle2, Loader2, Wallet } from 'lucide-react';
+import { X, Brain, Zap, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { loansApi } from '../lib/api';
 import { toast } from 'sonner';
-import { useWallet } from '../contexts/WalletContext';
 
 interface LoanRequestModalProps {
   onClose: () => void;
@@ -22,7 +21,7 @@ const PURPOSES = [
 
 export default function LoanRequestModal({
   onClose,
-  memberId = 'm1',
+  memberId = '',
   memberName = 'Lakshmi Devi',
   trustScore = 850,
 }: LoanRequestModalProps) {
@@ -31,7 +30,6 @@ export default function LoanRequestModal({
   const [purpose, setPurpose] = useState('');
   const [customPurpose, setCustomPurpose] = useState('');
   const [result, setResult] = useState<any>(null);
-  const { isConnected, connectWallet } = useWallet();
 
   const handleSubmit = async () => {
     const amt = parseInt(amount);
@@ -43,10 +41,6 @@ export default function LoanRequestModal({
     setStep('evaluating');
 
     try {
-      if (!isConnected) {
-        toast.info('Proceeding in gasless mode via SHG relayer');
-      }
-
       const res = await loansApi.request({
         memberId,
         amount: amt,
@@ -63,7 +57,7 @@ export default function LoanRequestModal({
       }
     } catch (err: any) {
       console.error(err);
-      toast.error(err?.message || 'Transaction failed or rejected by wallet');
+      toast.error(err?.message || 'Loan request failed');
       setStep('form');
     }
   };
@@ -147,16 +141,6 @@ export default function LoanRequestModal({
                 />
               </div>
 
-              {!isConnected && (
-                <button
-                  onClick={connectWallet}
-                  className="w-full mb-2 py-3.5 bg-slate-800 text-white rounded-xl font-bold text-sm hover:opacity-90 transition-opacity active:scale-95 flex items-center justify-center gap-2"
-                >
-                  <Wallet className="w-4 h-4" />
-                  Connect Pera Wallet (Optional)
-                </button>
-              )}
-
               <button
                 onClick={handleSubmit}
                 disabled={!amount || (!purpose && !customPurpose)}
@@ -175,10 +159,10 @@ export default function LoanRequestModal({
               </div>
               <h3 className="font-black text-xl font-headline mb-2">AI Evaluating...</h3>
               <p className="text-muted-foreground text-sm">
-                Checking your trust score, repayment history, and SBT record on Algorand.
+                Checking your trust score, repayment history, and credit record.
               </p>
               <div className="mt-6 space-y-2 text-left w-full">
-                {['Verifying d-SBT on blockchain...', 'Analyzing repayment history...', 'Checking liquidity pool...'].map((s, i) => (
+                {['Verifying trust score...', 'Analyzing repayment history...', 'Checking liquidity pool...'].map((s, i) => (
                   <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
                     <div className="w-1.5 h-1.5 bg-shg-secondary rounded-full animate-pulse" style={{ animationDelay: `${i * 200}ms` }} />
                     {s}

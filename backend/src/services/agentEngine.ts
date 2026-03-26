@@ -1,8 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
-import { generateTxHash } from './algorand';
+import { generateTxHash } from './txEngine';
 import AgentStateModel from '../models/AgentState';
 import Transaction from '../models/Transaction';
-import { registerTransactionLifecycle } from './algorand';
+import { registerTransactionLifecycle } from './txEngine';
 
 // ─── Agent State ─────────────────────────────────────────────────────────────
 
@@ -14,7 +14,7 @@ export interface VaultPosition {
   apy: number;
   yieldAccrued: number;
   stakedAt: string;
-  txHash: string;
+  transactionId: string;
   status: 'active' | 'withdrawing' | 'completed';
 }
 
@@ -36,7 +36,7 @@ export interface AgentLogEntry {
   message: string;
   detail?: string;
   amount?: number;
-  txHash?: string;
+  transactionId?: string;
   timestamp: string;
 }
 
@@ -60,35 +60,35 @@ const initialAgentState: AgentState = {
   vaultPositions: [
     {
       id: 'vault1',
-      protocol: 'Folks Finance',
-      asset: 'ALGO',
+      protocol: 'Fixed Deposit Pool',
+      asset: 'INR Fixed',
       deployed: 500000,
       apy: 4.2,
       yieldAccrued: 4200,
       stakedAt: new Date(Date.now() - 7 * 24 * 3600000).toISOString(),
-      txHash: generateTxHash(),
+      transactionId: generateTxHash(),
       status: 'active',
     },
     {
       id: 'vault2',
-      protocol: 'Tinyman',
-      asset: 'USDC-ALGO LP',
+      protocol: 'Mutual Fund Pool',
+      asset: 'INR Balanced',
       deployed: 250000,
       apy: 6.8,
       yieldAccrued: 2380,
       stakedAt: new Date(Date.now() - 14 * 24 * 3600000).toISOString(),
-      txHash: generateTxHash(),
+      transactionId: generateTxHash(),
       status: 'active',
     },
     {
       id: 'vault3',
-      protocol: 'Algofi',
-      asset: 'gALGO',
+      protocol: 'Treasury Bond Pool',
+      asset: 'INR Growth',
       deployed: 150000,
       apy: 5.1,
       yieldAccrued: 1020,
       stakedAt: new Date(Date.now() - 3 * 24 * 3600000).toISOString(),
-      txHash: generateTxHash(),
+      transactionId: generateTxHash(),
       status: 'active',
     },
   ],
@@ -109,28 +109,28 @@ const initialAgentState: AgentState = {
     {
       id: 'al1',
       tag: 'VAULT',
-      message: 'Deployed ₹5,00,000 → Folks Finance ALGO vault',
-      detail: '4.2% APY confirmed. Block #42891034',
+      message: 'Deployed ₹5,00,000 → Fixed Deposit Pool (INR Fixed)',
+      detail: '4.2% APY confirmed. Ref #FDP-001',
       amount: 500000,
-      txHash: generateTxHash(),
+      transactionId: generateTxHash(),
       timestamp: new Date(Date.now() - 7 * 24 * 3600000).toISOString(),
     },
     {
       id: 'al2',
       tag: 'VAULT',
-      message: 'Staked ₹2,50,000 → Tinyman USDC-ALGO LP',
-      detail: '6.8% APY. Dual-sided liquidity provision.',
+      message: 'Invested ₹2,50,000 → Mutual Fund Pool (INR Balanced)',
+      detail: '6.8% APY. Diversified investment allocation.',
       amount: 250000,
-      txHash: generateTxHash(),
+      transactionId: generateTxHash(),
       timestamp: new Date(Date.now() - 14 * 24 * 3600000).toISOString(),
     },
     {
       id: 'al3',
       tag: 'LOAN',
       message: 'Emergency loan auto-approved for Lakshmi Devi',
-      detail: 'SBT Score 850/1000 cleared. 1-of-3 threshold. ₹5,000 disbursed.',
+      detail: 'Trust Score 850/1000 cleared. 1-of-3 threshold. ₹5,000 disbursed.',
       amount: 5000,
-      txHash: generateTxHash(),
+      transactionId: generateTxHash(),
       timestamp: new Date(Date.now() - 2 * 3600000).toISOString(),
     },
     {
@@ -145,14 +145,14 @@ const initialAgentState: AgentState = {
       id: 'al5',
       tag: 'ALERT',
       message: 'Idle funds detected: ₹3,45,800 uninvested',
-      detail: 'Scanning for optimal DeFi yield opportunities...',
+      detail: 'Scanning for optimal yield opportunities...',
       amount: 345800,
       timestamp: new Date(Date.now() - 30 * 60000).toISOString(),
     },
     {
       id: 'al6',
       tag: 'SYSTEM',
-      message: 'Agent sweep complete — 3 vaults healthy',
+      message: 'Agent sweep complete — 3 pools healthy',
       detail: 'Total AUM: ₹9,00,000 | Avg APY: 5.2%',
       timestamp: new Date(Date.now() - 120000).toISOString(),
     },
@@ -216,16 +216,16 @@ export async function deployIdleFunds(amount?: number): Promise<{
 }> {
   const deployAmount = amount || Math.min(agentState.idleFunds, 50000);
   const protocols = [
-    { protocol: 'Folks Finance', asset: 'ALGO', apy: 4.2 },
-    { protocol: 'Tinyman', asset: 'USDC-ALGO LP', apy: 6.8 },
-    { protocol: 'Algofi', asset: 'gALGO', apy: 5.1 },
-    { protocol: 'Pact', asset: 'ALGO-USDT LP', apy: 7.3 },
+    { protocol: 'Fixed Deposit Pool', asset: 'INR Fixed', apy: 4.2 },
+    { protocol: 'Mutual Fund Pool', asset: 'INR Balanced', apy: 6.8 },
+    { protocol: 'Treasury Bond Pool', asset: 'INR Growth', apy: 5.1 },
+    { protocol: 'Recurring Deposit Pool', asset: 'INR Hybrid', apy: 7.3 },
   ];
   const chosen = protocols[Math.floor(Math.random() * protocols.length)];
-  const txHash = generateTxHash();
+  const transactionId = generateTxHash();
   registerTransactionLifecycle({
-    txHash,
-    type: 'vault_deploy',
+    transactionId,
+    type: 'investment_deploy',
     amount: deployAmount,
     initialStatus: 'pending',
     autoConfirm: true,
@@ -239,7 +239,7 @@ export async function deployIdleFunds(amount?: number): Promise<{
     apy: chosen.apy,
     yieldAccrued: 0,
     stakedAt: new Date().toISOString(),
-    txHash,
+    transactionId,
     status: 'active',
   };
 
@@ -251,10 +251,10 @@ export async function deployIdleFunds(amount?: number): Promise<{
   const logEntry: AgentLogEntry = {
     id: uuidv4(),
     tag: 'VAULT',
-    message: `Deployed ₹${deployAmount.toLocaleString('en-IN')} → ${chosen.protocol} ${chosen.asset} vault`,
-    detail: `${chosen.apy}% APY. TX: ${txHash.slice(0, 16)}...`,
+    message: `Deployed ₹${deployAmount.toLocaleString('en-IN')} → ${chosen.protocol} (${chosen.asset})`,
+    detail: `${chosen.apy}% APY. Ref: ${transactionId.slice(0, 16)}...`,
     amount: deployAmount,
-    txHash,
+    transactionId,
     timestamp: new Date().toISOString(),
   };
   agentState.agentLog.unshift(logEntry);
@@ -272,7 +272,6 @@ export async function harvestYield(vaultId?: string): Promise<{
     : agentState.vaultPositions.filter(v => v.status === 'active');
 
   const totalHarvested = targetVaults.reduce((sum, v) => {
-    // Simulate accrued yield since staking
     const hoursStaked = (Date.now() - new Date(v.stakedAt).getTime()) / 3600000;
     const accrued = Math.floor((v.deployed * v.apy / 100 / 8760) * hoursStaked);
     const toHarvest = v.yieldAccrued || accrued;
@@ -287,13 +286,13 @@ export async function harvestYield(vaultId?: string): Promise<{
   const logEntry: AgentLogEntry = {
     id: uuidv4(),
     tag: 'VAULT',
-    message: `Harvested ₹${harvestedAmount.toLocaleString('en-IN')} yield from ${targetVaults.length} vaults`,
+    message: `Harvested ₹${harvestedAmount.toLocaleString('en-IN')} yield from ${targetVaults.length} pools`,
     detail: 'Yield redistributed to SHG treasury.',
     amount: harvestedAmount,
-    txHash: (() => {
+    transactionId: (() => {
       const hash = generateTxHash();
       registerTransactionLifecycle({
-        txHash: hash,
+        transactionId: hash,
         type: 'yield_harvest',
         amount: harvestedAmount,
         initialStatus: 'pending',
@@ -319,7 +318,7 @@ export async function processEmergencyLoan(params: {
   approved: boolean;
   autoApproved: boolean;
   threshold: number;
-  txHash?: string;
+  transactionId?: string;
   autoRepayment?: AutoRepayment;
   logEntry: AgentLogEntry;
   reason: string;
@@ -333,35 +332,35 @@ export async function processEmergencyLoan(params: {
   let autoApproved = false;
   let threshold = 3;
   let reason = '';
-  let txHash: string | undefined;
+  let transactionId: string | undefined;
   let autoRepayment: AutoRepayment | undefined;
 
   if (isMicroLoan && trustScore >= 800) {
     approved = true;
     autoApproved = true;
     threshold = 1;
-    reason = `✅ SBT Score ${trustScore}/1000 exceeds micro-loan auto-approval threshold. Funds disbursed instantly.`;
+    reason = `✅ Trust Score ${trustScore}/1000 exceeds micro-loan auto-approval threshold. Funds disbursed instantly.`;
   } else if (isEmergency && isHighScore) {
     approved = true;
     autoApproved = true;
-    threshold = 1; // Emergency override: 1-of-3
-    reason = `🚨 Emergency override activated. SBT Score ${trustScore}/1000. Multi-sig threshold lowered to 1-of-3. Disbursed in <3s.`;
+    threshold = 1;
+    reason = `🚨 Emergency override activated. Trust Score ${trustScore}/1000. Approval threshold lowered to 1-of-3. Disbursed in <3s.`;
   } else if (trustScore >= 700) {
     approved = false;
     autoApproved = false;
     threshold = 3;
-    reason = `📋 Routed to standard 3-of-3 multi-sig. SBT Score ${trustScore}/1000 qualifies for approval.`;
+    reason = `📋 Routed to standard 3-of-3 approval. Trust Score ${trustScore}/1000 qualifies for approval.`;
   } else {
     approved = false;
     autoApproved = false;
     threshold = 3;
-    reason = `⚠️ SBT Score ${trustScore}/1000 below emergency threshold (750). Standard review required.`;
+    reason = `⚠️ Trust Score ${trustScore}/1000 below emergency threshold (750). Standard review required.`;
   }
 
   if (autoApproved) {
-    txHash = generateTxHash();
+    transactionId = generateTxHash();
     registerTransactionLifecycle({
-      txHash,
+      transactionId,
       type: 'loan_disbursement',
       amount,
       initialStatus: 'pending',
@@ -388,17 +387,17 @@ export async function processEmergencyLoan(params: {
     tag: 'LOAN',
     message: autoApproved
       ? `Emergency loan disbursed for ${memberName} — ₹${amount.toLocaleString('en-IN')}`
-      : `Loan request routed to multi-sig for ${memberName} — ₹${amount.toLocaleString('en-IN')}`,
+      : `Loan request routed to approval workflow for ${memberName} — ₹${amount.toLocaleString('en-IN')}`,
     detail: reason,
     amount,
-    txHash,
+    transactionId,
     timestamp: new Date().toISOString(),
   };
   agentState.agentLog.unshift(logEntry);
   agentState.lastScanAt = new Date().toISOString();
   await persistAgentState();
 
-  return { approved, autoApproved, threshold, txHash, autoRepayment, logEntry, reason };
+  return { approved, autoApproved, threshold, transactionId, autoRepayment, logEntry, reason };
 }
 
 export function getAgentStatus() {

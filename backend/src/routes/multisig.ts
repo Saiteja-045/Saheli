@@ -1,21 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { multiSigActions, MultiSigAction as MockAction } from '../data/mockData';
-import { generateTxHash } from '../services/algorand';
+import { generateTxHash, registerTransactionLifecycle } from '../services/txEngine';
 import MultiSigActionModel from '../models/MultiSigAction';
-import { registerTransactionLifecycle } from '../services/algorand';
 import LoanModel from '../models/Loan';
 import { queueBankDisbursement } from '../services/bankDisbursementService';
 
 const router = Router();
 
-async function ensureSeeded() {
-  const count = await MultiSigActionModel.countDocuments();
-  if (count > 0) return;
-  await MultiSigActionModel.insertMany(multiSigActions);
-}
-
-function mapDocToAction(doc: any): MockAction {
+function mapDocToAction(doc: any) {
   return {
     id: doc.id,
     type: doc.type,
@@ -26,27 +18,24 @@ function mapDocToAction(doc: any): MockAction {
     signaturesRequired: doc.signaturesRequired,
     status: doc.status,
     createdAt: doc.createdAt,
-    txHash: doc.txHash,
+    transactionId: doc.transactionId,
   };
 }
 
 // GET /api/multisig/pending
 router.get('/pending', async (_req: Request, res: Response) => {
-  await ensureSeeded();
   const pending = await MultiSigActionModel.find({ status: 'pending' }).sort({ createdAt: -1 }).lean();
-  res.json({ success: true, data: pending });
+  res.json({ success: true, data: pending.map(mapDocToAction) });
 });
 
 // GET /api/multisig
 router.get('/', async (_req: Request, res: Response) => {
-  await ensureSeeded();
   const actions = await MultiSigActionModel.find().sort({ createdAt: -1 }).lean();
   res.json({ success: true, data: actions.map(mapDocToAction) });
 });
 
 // POST /api/multisig/:id/sign
 router.post('/:id/sign', async (req: Request, res: Response) => {
-  await ensureSeeded();
   const action = await MultiSigActionModel.findOne({ id: req.params.id });
   if (!action) {
     res.status(404).json({ success: false, error: 'Action not found' });
@@ -63,19 +52,19 @@ router.post('/:id/sign', async (req: Request, res: Response) => {
     action.signatures.push(signerId);
   }
 
-  let message = `✍️ Signature ${action.signatures.length}/${action.signaturesRequired} recorded.`;
+  let message = `Approval ${action.signatures.length}/${action.signaturesRequired} recorded.`;
 
   if (action.signatures.length >= action.signaturesRequired) {
     action.status = 'executed';
-    action.txHash = generateTxHash();
+    action.transactionId = generateTxHash();
     registerTransactionLifecycle({
-      txHash: action.txHash,
+      transactionId: action.transactionId,
       type: action.type,
       amount: action.amount,
       initialStatus: 'pending',
       autoConfirm: true,
     });
-    message = `✅ Threshold reached! Action executed on Algorand. TX: ${action.txHash?.slice(0, 12)}...`;
+    message = `Threshold reached! Action executed. Ref: ${action.transactionId?.slice(0, 12)}...`;
 
     if (action.type === 'loan_approval' && action.linkedLoanId) {
       const loan = await LoanModel.findById(action.linkedLoanId);
@@ -89,11 +78,11 @@ router.post('/:id/sign', async (req: Request, res: Response) => {
           loanId: String(loan._id),
           userId: String(loan.user),
           amount: loan.amount,
-          notes: 'Leader approvals completed via multi-sig; sent to bank for payout',
+          notes: 'Leader approvals completed; sent to bank for payout',
           autoProcess: true,
         });
 
-        message = '✅ Leader threshold reached. Loan forwarded to bank for payout processing.';
+        message = 'Leader threshold reached. Loan forwarded to bank for payout processing.';
       }
     }
   }
@@ -108,7 +97,6 @@ router.post('/:id/sign', async (req: Request, res: Response) => {
 
 // POST /api/multisig/:id/reject
 router.post('/:id/reject', async (req: Request, res: Response) => {
-  await ensureSeeded();
   const action = await MultiSigActionModel.findOne({ id: req.params.id });
   if (!action) {
     res.status(404).json({ success: false, error: 'Action not found' });
@@ -119,27 +107,28 @@ router.post('/:id/reject', async (req: Request, res: Response) => {
   await action.save();
   res.json({
     success: true,
-    data: { action: mapDocToAction(action), message: '❌ Action rejected by leader.' },
+    data: { action: mapDocToAction(action), message: 'Action rejected by leader.' },
   });
 });
 
 // POST /api/multisig (create new action)
 router.post('/', async (req: Request, res: Response) => {
-  const { type, description, amount, requestedBy } = req.body;
+  const { type, description, amount, requestedBy, signaturesRequired, linkedLoanId, destinationRole } = req.body;
 
-  const newAction: MockAction = {
+  const created = await MultiSigActionModel.create({
     id: uuidv4(),
     type: type || 'loan_approval',
-    description: description || 'New multi-sig action',
+    description: description || 'New approval action',
     amount: amount || 0,
     requestedBy: requestedBy || 'AI Agent',
     signatures: [],
-    signaturesRequired: 3,
+    signaturesRequired: signaturesRequired || 3,
     status: 'pending',
     createdAt: new Date().toISOString(),
-  };
+    linkedLoanId,
+    destinationRole: destinationRole || 'leader',
+  });
 
-  const created = await MultiSigActionModel.create(newAction);
   res.status(201).json({ success: true, data: mapDocToAction(created) });
 });
 

@@ -1,7 +1,7 @@
 // ─── API Client for Saheli Saheli ─────────────────────────────────────────
 // All backend calls go through this typed client.
 
-const BASE_URL = '/api'; // Vite proxy handles this → http://localhost:3001
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const token = localStorage.getItem('saheli-token');
@@ -91,17 +91,24 @@ export const aiAgentApi = {
 
 export const qrApi = {
   generate: (body: {
+    transactionId?: string;
     txHash?: string;
     memberId?: string;
     memberName?: string;
     memberPhone?: string;
     amount?: number;
     type?: string;
-    walletAddress?: string;
+    // walletAddress?: string; - removed for MERN
     autoSendWhatsApp?: boolean;
-  }) =>
-    apiFetch<any>('/qr/generate', { method: 'POST', body: JSON.stringify(body) }),
-  verify: (txHash: string) => apiFetch<any>(`/qr/verify/${txHash}`),
+  }) => {
+    const payload = {
+      ...body,
+      transactionId: body.transactionId || body.txHash,
+    };
+
+    return apiFetch<any>('/qr/generate', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  verify: (transactionId: string) => apiFetch<any>(`/qr/verify/${transactionId}`),
 };
 
 // ─── Stats ────────────────────────────────────────────────────────────────────

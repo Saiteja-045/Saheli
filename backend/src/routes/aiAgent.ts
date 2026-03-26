@@ -1,17 +1,25 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { aiLog, treasuryStats, AILogEntry } from '../data/mockData';
-import { generateTxHash } from '../services/algorand';
-import { processEmergencyLoan } from '../services/agentEngine';
 import mongoose from 'mongoose';
 import User from '../models/User';
 import Transaction from '../models/Transaction';
+import LoanModel from '../models/Loan';
+import MultiSigActionModel from '../models/MultiSigAction';
+import { generateTxHash, registerTransactionLifecycle, setTransactionLifecycleStatus } from '../services/txEngine';
+import { processEmergencyLoan, getAgentStatus } from '../services/agentEngine';
 
 const router = Router();
 
-const mutableLog: AILogEntry[] = [...aiLog];
+type AILogEntry = {
+  id: string;
+  type: 'yield_deploy' | 'loan_auto_approve' | 'yield_alert' | 'sync' | 'rebalance' | 'notification';
+  icon: string;
+  title: string;
+  highlight: string;
+  timestamp: string;
+  amount?: number;
+};
 
-// Intents the AI agent can parse from WhatsApp messages
 function parseIntent(message: string): {
   intent: 'deposit' | 'withdraw' | 'loan' | 'balance' | 'qr' | 'unknown';
   amount?: number;
@@ -19,11 +27,11 @@ function parseIntent(message: string): {
 } {
   const lower = message.toLowerCase();
 
-  // Extract amount
-  const amountMatch = lower.match(/(\d[\d,]*)\s*(rupees?|rs\.?|₹)/i) ||
+  const amountMatch =
+    lower.match(/(\d[\d,]*)\s*(rupees?|rs\.?|₹)/i) ||
     lower.match(/(₹)\s*(\d[\d,]*)/i) ||
     lower.match(/(\d[\d,]+)/);
-  const amount = amountMatch ? parseInt(amountMatch[0].replace(/[^\d]/g, '')) : undefined;
+  const amount = amountMatch ? parseInt(amountMatch[0].replace(/[^\d]/g, ''), 10) : undefined;
 
   if (/deposit|save|jama|jamaa|डिपॉजिट|save money/i.test(lower)) {
     return { intent: 'deposit', amount };
@@ -37,7 +45,7 @@ function parseIntent(message: string): {
     return {
       intent: 'loan',
       amount,
-      purpose: purposeMatch ? purposeMatch[1] : (isEmergency ? 'emergency medical' : 'general purpose'),
+      purpose: purposeMatch ? purposeMatch[1] : isEmergency ? 'emergency medical' : 'general purpose',
     };
   }
   if (/balance|kitna|कितना|how much|savings/i.test(lower)) {
@@ -50,112 +58,268 @@ function parseIntent(message: string): {
   return { intent: 'unknown' };
 }
 
+async function resolveMember(memberId?: string, memberName?: string) {
+  if (memberId && mongoose.Types.ObjectId.isValid(memberId)) {
+    const byId = await User.findById(memberId).select('name trustScore totalSavings activeLoans activeLoansAmount yieldEarned role');
+    if (byId && byId.role === 'member') return byId;
+  }
+
+  if (memberName) {
+    const byName = await User.findOne({ name: memberName, role: 'member' }).select('name trustScore totalSavings activeLoans activeLoansAmount yieldEarned role');
+    if (byName) return byName;
+  }
+
+  return User.findOne({ role: 'member' }).sort({ createdAt: 1 }).select('name trustScore totalSavings activeLoans activeLoansAmount yieldEarned role');
+}
+
+async function saveMemberTransaction(params: {
+  userId: string;
+  type: 'deposit' | 'withdrawal' | 'loan_disbursement' | 'loan_repayment' | 'yield';
+  amount: number;
+  description: string;
+  agentProcessed?: boolean;
+  transactionId?: string;
+}): Promise<string> {
+  const transactionId = params.transactionId || generateTxHash();
+  registerTransactionLifecycle({
+    transactionId,
+    type: params.type,
+    amount: params.amount,
+    initialStatus: 'pending',
+    autoConfirm: true,
+  });
+
+  await Transaction.create({
+    user: params.userId,
+    type: params.type,
+    amount: params.amount,
+    description: params.description,
+    transactionId,
+    status: 'pending',
+    agentProcessed: params.agentProcessed ?? true,
+  });
+
+  setTimeout(async () => {
+    await Transaction.updateOne({ transactionId }, { $set: { status: 'confirmed' } });
+    setTransactionLifecycleStatus(transactionId, 'confirmed');
+  }, 2500 + Math.floor(Math.random() * 2500));
+
+  return transactionId;
+}
+
 async function buildAgentResponse(
   intent: ReturnType<typeof parseIntent>,
-  memberName = 'Lakshmi',
-  memberId = 'm1',
+  memberName = 'SHG Member',
+  memberId?: string,
 ): Promise<{
   reply: string;
   action?: string;
-  txHash?: string;
+  transactionId?: string;
   amount?: number;
   showQR?: boolean;
 }> {
-  const txHash = generateTxHash();
+  const member = await resolveMember(memberId, memberName);
+  const effectiveName = member?.name || memberName;
 
   switch (intent.intent) {
     case 'deposit': {
       const amt = intent.amount || 500;
-      // Add to AI log
-      mutableLog.unshift({
-        id: uuidv4(),
-        type: 'sync',
-        icon: 'CheckCircle2',
-        title: `Deposit of ₹${amt.toLocaleString('en-IN')} by ${memberName} via WhatsApp`,
-        highlight: 'Blockchain confirmed',
-        timestamp: new Date().toISOString(),
-        amount: amt,
-      });
+      let transactionId: string | undefined;
+
+      if (member) {
+        transactionId = await saveMemberTransaction({
+          userId: String(member._id),
+          type: 'deposit',
+          amount: amt,
+          description: 'Deposit via AI chat',
+        });
+
+        member.totalSavings = (member.totalSavings || 0) + amt;
+        await member.save();
+      }
+
+      const nextBalance = (member?.totalSavings || 0).toLocaleString('en-IN');
       return {
-        reply: `✅ Done! Your deposit of *₹${amt.toLocaleString('en-IN')}* has been recorded on the Algorand blockchain.\n\n📊 New balance: ₹${(42500 + amt).toLocaleString('en-IN')}\n\n🔗 TX ID: \`${txHash.slice(0, 16)}...\`\n\n_Tap below for your QR proof receipt_`,
+        reply: `Done. Your deposit of ₹${amt.toLocaleString('en-IN')} has been recorded.\n\nNew balance: ₹${nextBalance}\n\nRef ID: ${transactionId || 'processing'}\n\nUse the generated QR as proof if needed.`,
         action: 'deposit_confirmed',
-        txHash,
+        transactionId,
         amount: amt,
         showQR: true,
       };
     }
     case 'withdraw': {
       const amt = intent.amount || 500;
+      let transactionId: string | undefined;
+
+      if (member) {
+        transactionId = await saveMemberTransaction({
+          userId: String(member._id),
+          type: 'withdrawal',
+          amount: amt,
+          description: 'Withdrawal via AI chat',
+        });
+
+        member.totalSavings = Math.max(0, (member.totalSavings || 0) - amt);
+        await member.save();
+      }
+
       return {
-        reply: `✅ Withdrawal of *₹${amt.toLocaleString('en-IN')}* initiated.\n\nPlease visit your nearest BC agent with this receipt.\n\n🔗 TX ID: \`${txHash.slice(0, 16)}...\``,
+        reply: `Withdrawal of ₹${amt.toLocaleString('en-IN')} initiated.\n\nPlease visit your nearest BC agent with this receipt.\n\nRef ID: ${transactionId || 'processing'}`,
         action: 'withdraw_initiated',
-        txHash,
+        transactionId,
         amount: amt,
         showQR: true,
       };
     }
     case 'loan': {
       const amt = intent.amount || 5000;
-      let trustScore = 850;
-      if (mongoose.Types.ObjectId.isValid(memberId)) {
-        const user = await User.findById(memberId).select('trustScore');
-        if (user) trustScore = user.trustScore;
-      }
+      const trustScore = member?.trustScore || 750;
+      const effectiveMemberId = member ? String(member._id) : memberId || '';
 
       const agentResult = await processEmergencyLoan({
-        memberId,
-        memberName,
+        memberId: effectiveMemberId,
+        memberName: effectiveName,
         trustScore,
         amount: amt,
         purpose: intent.purpose || 'general purpose',
       });
 
+      if (member) {
+        if (agentResult.autoApproved && agentResult.transactionId) {
+          await LoanModel.create({
+            user: member._id,
+            amount: amt,
+            purpose: intent.purpose || 'general purpose',
+            status: 'repaying',
+            trustScoreAtApplication: trustScore,
+            aiRecommendation: 'approve',
+            aiReason: agentResult.reason,
+            approvals: 1,
+            approvalsRequired: 1,
+            disbursedAt: new Date(),
+            dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            repaidAmount: 0,
+            transactionId: agentResult.transactionId,
+          });
+
+          member.activeLoans = (member.activeLoans || 0) + 1;
+          member.activeLoansAmount = (member.activeLoansAmount || 0) + amt;
+          await member.save();
+
+          await saveMemberTransaction({
+            userId: String(member._id),
+            type: 'loan_disbursement',
+            amount: amt,
+            description: `Emergency loan disbursed for ${intent.purpose || 'general purpose'}`,
+            transactionId: agentResult.transactionId,
+          });
+        } else {
+          const loan = await LoanModel.create({
+            user: member._id,
+            amount: amt,
+            purpose: intent.purpose || 'general purpose',
+            status: 'pending',
+            trustScoreAtApplication: trustScore,
+            aiRecommendation: trustScore >= 700 ? 'approve' : 'review',
+            aiReason: agentResult.reason,
+            approvals: 0,
+            approvalsRequired: agentResult.threshold,
+            repaidAmount: 0,
+          });
+
+          await MultiSigActionModel.create({
+            id: uuidv4(),
+            type: 'loan_approval',
+            description: `Loan approval for ${effectiveName}`,
+            amount: amt,
+            requestedBy: effectiveName,
+            signatures: [],
+            signaturesRequired: agentResult.threshold,
+            status: 'pending',
+            linkedLoanId: String(loan._id),
+            destinationRole: 'leader',
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
+
       if (agentResult.autoApproved) {
-        mutableLog.unshift({
-          id: uuidv4(),
-          type: 'loan_auto_approve',
-          icon: 'Zap',
-          title: `Emergency loan disbursed ₹${amt.toLocaleString('en-IN')} for ${memberName}`,
-          highlight: `Score: 850/1000 · 1-of-3 override`,
-          timestamp: new Date().toISOString(),
-          amount: amt,
-        });
         const installment = agentResult.autoRepayment?.installmentAmount || Math.ceil(amt / 6);
         return {
-          reply: `🚨 *EMERGENCY LOAN DISBURSED*\n\n🤖 AI Agent activated emergency protocol:\n• SBT Score: *850/1000 (Excellent)*\n• Multi-sig threshold: *1-of-3 (Emergency Override)*\n• Amount: *₹${amt.toLocaleString('en-IN')}*\n• Purpose: ${intent.purpose}\n\n✅ Funds sent to your account in *<3 seconds*\n🔗 TX: \`${agentResult.txHash?.slice(0, 16)}...\`\n\n📅 *Auto-Repayment Scheduled:*\n₹${installment.toLocaleString('en-IN')}/month × 6 installments\nDeducted automatically from your next deposits.`,
+          reply: `Emergency loan disbursed.\n\nTrust Score: ${trustScore}/1000\nApproval threshold: 1-of-3 (emergency override)\nAmount: ₹${amt.toLocaleString('en-IN')}\nPurpose: ${intent.purpose}\n\nFunds sent instantly.\nRef: ${agentResult.transactionId || 'processing'}\n\nAuto-repayment scheduled: ₹${installment.toLocaleString('en-IN')} x 6 installments.`,
           action: 'emergency_loan_disbursed',
-          txHash: agentResult.txHash,
+          transactionId: agentResult.transactionId,
           amount: amt,
           showQR: true,
         };
       }
+
       return {
-        reply: `📋 *Loan Request Received*\n\n*Amount:* ₹${amt.toLocaleString('en-IN')}\n*Purpose:* ${intent.purpose || 'General use'}\n\n🔍 SBT Score evaluated: 850/1000\n⏳ Routing to ${agentResult.threshold}-of-3 multi-sig approval\n\n_SHG leaders have been notified via WhatsApp. You'll receive confirmation shortly._`,
+        reply: `Loan request received.\n\nAmount: ₹${amt.toLocaleString('en-IN')}\nPurpose: ${intent.purpose || 'General use'}\n\nTrust score evaluated: ${trustScore}/1000\nRouting to ${agentResult.threshold}-of-3 leader approval.\n\nYou will get an update after review.`,
         action: 'loan_pending_approval',
         amount: amt,
       };
     }
-    case 'balance':
+    case 'balance': {
+      if (!member) {
+        return {
+          reply: 'Account not found. Please log in from the app and try again.',
+        };
+      }
+
       return {
-        reply: `💰 *${memberName}'s Account*\n\n📈 Savings: *₹42,500*\n🤝 Active Loans: *₹12,000*\n✨ Yield Earned: *₹1,840*\n⭐ Trust Score: *850/1000 (Excellent)*\n\n_Your AI agent is investing idle funds at 4.2% APY_`,
+        reply: `${effectiveName}'s account\n\nSavings: ₹${(member.totalSavings || 0).toLocaleString('en-IN')}\nActive Loans: ₹${(member.activeLoansAmount || 0).toLocaleString('en-IN')}\nYield Earned: ₹${(member.yieldEarned || 0).toLocaleString('en-IN')}\nTrust Score: ${member.trustScore || 0}/1000`,
       };
-    case 'qr':
+    }
+    case 'qr': {
+      const transactionId = generateTxHash();
       return {
-        reply: `📱 Generating your QR proof certificate...\n\nThis QR code contains your verified identity and can be scanned by any bank officer to verify your creditworthiness — no internet needed!`,
+        reply: 'Generating your QR proof certificate. You can share it with a bank officer for verification.',
         action: 'qr_generated',
-        txHash,
+        transactionId,
         showQR: true,
       };
+    }
     default:
       return {
-        reply: `👋 Namaste! I'm your Saheli AI Agent.\n\nYou can say:\n• *"Deposit 500 rupees"*\n• *"I need a loan for ₹5000"*\n• *"My balance"*\n• *"Generate QR proof"*\n\n_I understand Hindi, Kannada, and Telugu too!_ 🇮🇳`,
+        reply:
+          'Namaste! I am your Saheli AI Agent.\n\nYou can say:\n- Deposit 500 rupees\n- I need a loan for ₹5000\n- My balance\n- Generate QR proof',
       };
   }
 }
 
 // GET /api/ai-agent/log
-router.get('/log', (_req: Request, res: Response) => {
-  res.json({ success: true, data: mutableLog.slice(0, 10) });
+router.get('/log', async (_req: Request, res: Response) => {
+  const [recentTx, recentLoans] = await Promise.all([
+    Transaction.find({ status: { $ne: 'failed' } }).sort({ createdAt: -1 }).limit(6).populate('user', 'name').lean(),
+    LoanModel.find().sort({ createdAt: -1 }).limit(4).populate('user', 'name').lean(),
+  ]);
+
+  const txLog: AILogEntry[] = recentTx.map((tx: any) => ({
+    id: String(tx._id),
+    type: 'sync',
+    icon: 'CheckCircle2',
+    title: `${tx.type} by ${tx.user?.name || 'Member'}`,
+    highlight: tx.status,
+    timestamp: tx.createdAt,
+    amount: tx.amount,
+  }));
+
+  const loanLog: AILogEntry[] = recentLoans.map((loan: any) => ({
+    id: String(loan._id),
+    type: loan.status === 'repaying' ? 'loan_auto_approve' : 'notification',
+    icon: loan.status === 'repaying' ? 'Zap' : 'Clock',
+    title: `Loan ${loan.status} for ${loan.user?.name || 'Member'}`,
+    highlight: loan.aiRecommendation || 'review',
+    timestamp: loan.createdAt,
+    amount: loan.amount,
+  }));
+
+  const combined = [...txLog, ...loanLog]
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, 10);
+
+  res.json({ success: true, data: combined });
 });
 
 // GET /api/ai-agent/suggestions
@@ -163,10 +327,10 @@ router.get('/suggestions', async (req: Request, res: Response) => {
   const { memberId } = req.query;
 
   const defaultSuggestions = [
-    { label: '💰 Deposit savings', text: 'Deposit 500 rupees' },
-    { label: '📋 Request loan', text: 'I need a loan for ₹5000' },
-    { label: '📊 My balance', text: 'My balance' },
-    { label: '📱 Generate QR proof', text: 'Generate QR proof' },
+    { label: 'Deposit savings', text: 'Deposit 500 rupees' },
+    { label: 'Request loan', text: 'I need a loan for ₹5000' },
+    { label: 'My balance', text: 'My balance' },
+    { label: 'Generate QR proof', text: 'Generate QR proof' },
   ];
 
   if (!memberId || typeof memberId !== 'string' || !mongoose.Types.ObjectId.isValid(memberId)) {
@@ -174,10 +338,9 @@ router.get('/suggestions', async (req: Request, res: Response) => {
     return;
   }
 
-  const [user, latestTx, pendingLoan] = await Promise.all([
+  const [user, latestTx] = await Promise.all([
     User.findById(memberId).select('totalSavings activeLoans trustScore').lean(),
     Transaction.findOne({ user: memberId }).sort({ createdAt: -1 }).lean(),
-    User.findById(memberId).select('activeLoans').lean(),
   ]);
 
   if (!user) {
@@ -187,33 +350,66 @@ router.get('/suggestions', async (req: Request, res: Response) => {
 
   const suggestions = [] as Array<{ label: string; text: string }>;
 
-  if ((pendingLoan?.activeLoans || 0) > 0) {
-    suggestions.push({ label: '📌 Loan status', text: 'Check my loan status' });
+  if ((user.activeLoans || 0) > 0) {
+    suggestions.push({ label: 'Loan status', text: 'Check my loan status' });
   }
 
   if ((user.totalSavings || 0) < 1000) {
-    suggestions.push({ label: '💰 Add weekly savings', text: 'Deposit 500 rupees' });
+    suggestions.push({ label: 'Add weekly savings', text: 'Deposit 500 rupees' });
   }
 
   const lastTxAgeDays = latestTx?.createdAt
     ? Math.floor((Date.now() - new Date(latestTx.createdAt).getTime()) / (24 * 60 * 60 * 1000))
     : 999;
   if (lastTxAgeDays > 30) {
-    suggestions.push({ label: '🔄 Sync new deposit', text: 'Deposit 1000 rupees' });
+    suggestions.push({ label: 'Sync new deposit', text: 'Deposit 1000 rupees' });
   }
 
   if ((user.trustScore || 0) >= 800) {
-    suggestions.push({ label: '🚨 Emergency ₹8000 hospital', text: 'Emergency 8000 rupees for hospital' });
+    suggestions.push({ label: 'Emergency ₹8000 hospital', text: 'Emergency 8000 rupees for hospital' });
   }
 
-  suggestions.push({ label: '📊 My balance', text: 'My balance' });
-  suggestions.push({ label: '📱 Generate QR proof', text: 'Generate QR proof' });
+  suggestions.push({ label: 'My balance', text: 'My balance' });
+  suggestions.push({ label: 'Generate QR proof', text: 'Generate QR proof' });
 
   res.json({ success: true, data: suggestions.slice(0, 5) });
 });
 
 // GET /api/ai-agent/insights
-router.get('/insights', (_req: Request, res: Response) => {
+router.get('/insights', async (_req: Request, res: Response) => {
+  const [membersCount, txTotals] = await Promise.all([
+    User.countDocuments({ role: 'member' }),
+    Transaction.aggregate([
+      { $match: { status: { $ne: 'failed' } } },
+      {
+        $group: {
+          _id: null,
+          inflow: {
+            $sum: {
+              $cond: [{ $in: ['$type', ['deposit', 'yield', 'loan_repayment']] }, '$amount', 0],
+            },
+          },
+          outflow: {
+            $sum: {
+              $cond: [{ $in: ['$type', ['withdrawal', 'loan_disbursement']] }, '$amount', 0],
+            },
+          },
+        },
+      },
+    ]),
+  ]);
+
+  const inflow = txTotals[0]?.inflow || 0;
+  const outflow = txTotals[0]?.outflow || 0;
+  const status = getAgentStatus();
+
+  const treasuryStats = {
+    totalLiquidity: Math.max(0, inflow - outflow),
+    idleFunds: status.idleFunds,
+    totalYieldHarvested: status.totalYieldHarvested,
+    activeMembers: membersCount,
+  };
+
   res.json({
     success: true,
     data: {
@@ -222,21 +418,21 @@ router.get('/insights', (_req: Request, res: Response) => {
         {
           type: 'yield_opportunity',
           title: 'Idle Fund Opportunity',
-          body: `₹${(50000).toLocaleString('en-IN')} is currently idle. Recommend deploying to Folks Finance vault for 4.2% APY.`,
+          body: `₹${status.idleFunds.toLocaleString('en-IN')} currently idle. Recommend deployment to active yield pools.`,
           action: 'deploy_funds',
           priority: 'high',
         },
         {
           type: 'repayment_reminder',
           title: 'Upcoming Repayments',
-          body: '3 members have loan installments due this week. AI will send WhatsApp reminders.',
+          body: `${status.autoRepayments.filter((r) => r.status === 'active').length} active repayment schedules are currently tracked.`,
           action: 'send_reminders',
           priority: 'medium',
         },
         {
           type: 'score_update',
-          title: 'Trust Score Update',
-          body: 'Lakshmi Devi\'s SBT score improved to 850 after consistent 6-month repayment streak.',
+          title: 'Trust and liquidity sync',
+          body: `Treasury net liquidity now at ₹${Math.max(0, inflow - outflow).toLocaleString('en-IN')}.`,
           priority: 'low',
         },
       ],
@@ -244,21 +440,17 @@ router.get('/insights', (_req: Request, res: Response) => {
   });
 });
 
-// POST /api/ai-agent/chat (WhatsApp message parsing)
+// POST /api/ai-agent/chat
 router.post('/chat', async (req: Request, res: Response) => {
-  const { message, memberId = 'm1', memberName = 'Lakshmi' } = req.body;
+  const { message, memberId, memberName = 'SHG Member' } = req.body;
 
   if (!message) {
     res.status(400).json({ success: false, error: 'message is required' });
     return;
   }
 
-  // Simulate a short processing delay acknowledgment
   const intent = parseIntent(message);
   const response = await buildAgentResponse(intent, memberName, memberId);
-
-  // Log the interaction
-  console.log(`[AI Agent] Member: ${memberName} | Intent: ${intent.intent} | Message: "${message}"`);
 
   res.json({
     success: true,
@@ -268,6 +460,7 @@ router.post('/chat', async (req: Request, res: Response) => {
       detectedIntent: intent.intent,
       detectedAmount: intent.amount,
       ...response,
+      txHash: response.transactionId,
     },
   });
 });

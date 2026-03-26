@@ -24,7 +24,7 @@ const loanSchema = new mongoose.Schema(
     disbursedAt: { type: Date },
     dueDate: { type: Date },
     repaidAmount: { type: Number, default: 0 },
-    txHash: { type: String },
+    transactionId: { type: String },
   },
   { timestamps: true }
 );

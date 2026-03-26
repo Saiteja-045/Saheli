@@ -5,7 +5,6 @@ import {
   processEmergencyLoan,
   getAgentStatus,
 } from '../services/agentEngine';
-import { members } from '../data/mockData';
 import User from '../models/User';
 import mongoose from 'mongoose';
 
@@ -22,7 +21,7 @@ router.get('/log', (_req: Request, res: Response) => {
   res.json({ success: true, data: status.agentLog.slice(0, 20) });
 });
 
-// GET /api/agent/vaults — vault positions only
+// GET /api/agent/vaults — investment pool positions only
 router.get('/vaults', (_req: Request, res: Response) => {
   const status = getAgentStatus();
   res.json({
@@ -87,32 +86,37 @@ router.post('/harvest', async (req: Request, res: Response) => {
 
 // POST /api/agent/emergency-loan — agentic emergency loan flow
 router.post('/emergency-loan', async (req: Request, res: Response) => {
-  const { memberId = 'm1', amount, purpose = 'emergency medical' } = req.body;
+  const { memberId, amount, purpose = 'emergency medical' } = req.body;
 
   if (!amount) {
     res.status(400).json({ success: false, error: 'amount is required' });
     return;
   }
 
-  let memberName = 'Lakshmi Devi';
+  let memberName = 'SHG Member';
   let trustScore = 750;
+  let resolvedMemberId = memberId;
 
-  if (mongoose.Types.ObjectId.isValid(memberId)) {
+  if (memberId && mongoose.Types.ObjectId.isValid(memberId)) {
     const dbMember = await User.findById(memberId).select('name trustScore');
     if (dbMember) {
       memberName = dbMember.name;
       trustScore = dbMember.trustScore || trustScore;
+      resolvedMemberId = String(dbMember._id);
     }
-  } else {
-    const mockMember = members.find(m => m.id === memberId);
-    if (mockMember) {
-      memberName = mockMember.name;
-      trustScore = mockMember.trustScore;
+  }
+
+  if (!resolvedMemberId) {
+    const firstMember = await User.findOne({ role: 'member' }).sort({ createdAt: 1 }).select('_id name trustScore');
+    if (firstMember) {
+      resolvedMemberId = String(firstMember._id);
+      memberName = firstMember.name;
+      trustScore = firstMember.trustScore || trustScore;
     }
   }
 
   const result = await processEmergencyLoan({
-    memberId,
+    memberId: resolvedMemberId || 'unknown-member',
     memberName,
     trustScore,
     amount,
@@ -129,10 +133,7 @@ router.post('/emergency-loan', async (req: Request, res: Response) => {
       signaturesRequired: result.threshold,
       message: result.autoApproved
         ? `🚨 EMERGENCY LOAN DISBURSED in <3s — ₹${amount.toLocaleString('en-IN')} sent to ${memberName}`
-        : `📋 Loan queued for ${result.threshold}-of-3 multi-sig approval`,
-      explorerUrl: result.txHash
-        ? `https://testnet.algoexplorer.io/tx/${result.txHash}`
-        : undefined,
+        : `📋 Loan queued for ${result.threshold}-of-3 approval`,
     },
   });
 });

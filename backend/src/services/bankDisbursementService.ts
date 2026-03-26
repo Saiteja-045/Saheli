@@ -3,7 +3,7 @@ import LoanModel from '../models/Loan';
 import User from '../models/User';
 import Transaction from '../models/Transaction';
 import BankDisbursement from '../models/BankDisbursement';
-import { generateTxHash, registerTransactionLifecycle, setTransactionLifecycleStatus } from './algorand';
+import { generateTxHash, registerTransactionLifecycle, setTransactionLifecycleStatus } from './txEngine';
 
 export async function queueBankDisbursement(params: {
   loanId: string;
@@ -53,9 +53,9 @@ export async function processBankDisbursement(disbursementId: string, processedB
     return disbursement;
   }
 
-  const txHash = generateTxHash();
+  const transactionId = generateTxHash();
   registerTransactionLifecycle({
-    txHash,
+    transactionId,
     type: 'loan_disbursement',
     amount: disbursement.amount,
     initialStatus: 'pending',
@@ -63,7 +63,7 @@ export async function processBankDisbursement(disbursementId: string, processedB
   });
 
   disbursement.status = 'approved';
-  disbursement.txHash = txHash;
+  disbursement.transactionId = transactionId;
   disbursement.bankReference = `BANK-${uuidv4().slice(0, 8).toUpperCase()}`;
   disbursement.processedBy = processedBy;
   disbursement.processedAt = new Date();
@@ -72,7 +72,7 @@ export async function processBankDisbursement(disbursementId: string, processedB
   loan.status = 'repaying';
   loan.disbursedAt = new Date();
   loan.dueDate = loan.dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-  loan.txHash = txHash;
+  loan.transactionId = transactionId;
   await loan.save();
 
   user.activeLoans = (user.activeLoans || 0) + 1;
@@ -84,14 +84,14 @@ export async function processBankDisbursement(disbursementId: string, processedB
     type: 'loan_disbursement',
     amount: disbursement.amount,
     description: `Loan disbursed by bank (${disbursement.bankReference})`,
-    txHash,
+    transactionId,
     status: 'pending',
     agentProcessed: false,
   });
 
   setTimeout(async () => {
-    await Transaction.updateOne({ txHash }, { $set: { status: 'confirmed' } });
-    setTransactionLifecycleStatus(txHash, 'confirmed');
+    await Transaction.updateOne({ transactionId }, { $set: { status: 'confirmed' } });
+    setTransactionLifecycleStatus(transactionId, 'confirmed');
   }, 2500 + Math.floor(Math.random() * 2500));
 
   return disbursement;

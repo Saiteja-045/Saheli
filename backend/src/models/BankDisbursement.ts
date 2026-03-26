@@ -7,7 +7,7 @@ const bankDisbursementSchema = new mongoose.Schema(
     amount: { type: Number, required: true },
     status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending', index: true },
     bankReference: { type: String },
-    txHash: { type: String },
+    transactionId: { type: String },
     queuedAt: { type: Date, default: Date.now },
     processedAt: { type: Date },
     processedBy: { type: String },

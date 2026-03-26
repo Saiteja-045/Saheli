@@ -9,19 +9,19 @@ const steps = [
   {
     icon: Users,
     title: 'Connect your group',
-    description: 'Leaders invite members via WhatsApp. Wallets are created automatically—no seed phrases to memorize.',
+    description: 'Leaders invite members via WhatsApp. Secure accounts are created automatically.',
     color: 'bg-shg-primary/10 text-shg-primary'
   },
   {
     icon: Wallet,
-    title: 'Save & borrow on-chain',
-    description: 'Members deposit via voice or text. Loans are approved by AI + multi-sig, with rules enforced by smart contracts.',
+    title: 'Save & borrow securely',
+    description: 'Members deposit via voice or text. Loans are approved by AI + multi-leader approval, with rules enforced by system policies.',
     color: 'bg-shg-secondary/10 text-shg-secondary'
   },
   {
     icon: Shield,
     title: 'Build verifiable trust',
-    description: 'Every repayment updates your d-SBT score. Banks and NGOs can audit instantly—no paperwork.',
+    description: 'Every repayment updates your trust score. Banks and NGOs can audit instantly—no paperwork.',
     color: 'bg-shg-tertiary/10 text-shg-tertiary'
   }
 ];

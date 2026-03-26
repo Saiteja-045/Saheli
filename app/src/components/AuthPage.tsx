@@ -106,12 +106,12 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 py-2 mb-5">
             <ShieldCheck className="w-4 h-4 text-blue-400" />
-            <span className="text-white/80 text-sm font-medium">Blockchain-secured identity</span>
+            <span className="text-white/80 text-sm font-medium">Digitally secured identity</span>
           </div>
           <h1 className="text-4xl lg:text-5xl font-black text-white tracking-tight">
             Sa<span className="bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">heli</span>
           </h1>
-          <p className="text-white/50 mt-2 text-sm">Empowering Rural Finance through Algorand</p>
+          <p className="text-white/50 mt-2 text-sm">Empowering Rural Finance</p>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-6">
@@ -283,7 +283,7 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
                 </button>
               </p>
               <p className="text-white/20 text-xs mt-3">
-                🔐 Secured by Algorand Blockchain
+                🔐 Secured with end-to-end encryption
               </p>
             </div>
           </div>

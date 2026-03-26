@@ -26,7 +26,7 @@ export interface Transaction {
   amount: number;
   description: string;
   timestamp: string;
-  txHash: string;
+  transactionId: string;
   status: 'confirmed' | 'pending' | 'failed';
   agentProcessed: boolean;
 }
@@ -47,7 +47,7 @@ export interface Loan {
   dueDate?: string;
   repaidAmount: number;
   createdAt: string;
-  txHash?: string;
+  transactionId?: string;
 }
 
 export interface MultiSigAction {
@@ -60,7 +60,7 @@ export interface MultiSigAction {
   signaturesRequired: number;
   status: 'pending' | 'executed' | 'rejected';
   createdAt: string;
-  txHash?: string;
+  transactionId?: string;
 }
 
 export interface SHGGroup {
@@ -72,7 +72,7 @@ export interface SHGGroup {
   activeLoans: string;
   totalLiquidity: number;
   yieldThisMonth: number;
-  auditStatus: 'IMMUTABLE_OK' | 'PENDING_AUDIT' | 'FLAGGED';
+  auditStatus: 'VERIFIED' | 'PENDING_AUDIT' | 'FLAGGED';
   region: string;
 }
 
@@ -93,7 +93,7 @@ export const members: Member[] = [
     id: 'm1',
     name: 'Lakshmi Devi',
     phone: '+91-9876543210',
-    did: 'shg.chain/m/8821...4a',
+    did: 'saheli/m/8821...4a',
     trustScore: 850,
     trustGrade: 'EXCELLENT',
     totalSavings: 42500,
@@ -111,7 +111,7 @@ export const members: Member[] = [
         amount: 500,
         description: 'WhatsApp Voice Deposit',
         timestamp: new Date(Date.now() - 7200000).toISOString(),
-        txHash: 'ALGO_' + uuidv4().slice(0, 16).toUpperCase(),
+        transactionId: 'TXN_' + uuidv4().slice(0, 16).toUpperCase(),
         status: 'confirmed',
         agentProcessed: true,
       },
@@ -121,7 +121,7 @@ export const members: Member[] = [
         amount: 5000,
         description: 'Loan Auto-Approved — Inventory Financing (Seed Bank)',
         timestamp: new Date(Date.now() - 86400000).toISOString(),
-        txHash: 'ALGO_' + uuidv4().slice(0, 16).toUpperCase(),
+        transactionId: 'TXN_' + uuidv4().slice(0, 16).toUpperCase(),
         status: 'confirmed',
         agentProcessed: true,
       },
@@ -131,7 +131,7 @@ export const members: Member[] = [
         amount: -1200,
         description: 'Loan Repayment — Batch 14 Installment',
         timestamp: new Date(Date.now() - 172800000).toISOString(),
-        txHash: 'ALGO_' + uuidv4().slice(0, 16).toUpperCase(),
+        transactionId: 'TXN_' + uuidv4().slice(0, 16).toUpperCase(),
         status: 'confirmed',
         agentProcessed: false,
       },
@@ -139,9 +139,9 @@ export const members: Member[] = [
         id: 't4',
         type: 'yield',
         amount: 340,
-        description: 'Yield earned from Folks Finance vault',
+        description: 'Yield earned from Fixed Deposit Pool',
         timestamp: new Date(Date.now() - 604800000).toISOString(),
-        txHash: 'ALGO_' + uuidv4().slice(0, 16).toUpperCase(),
+        transactionId: 'TXN_' + uuidv4().slice(0, 16).toUpperCase(),
         status: 'confirmed',
         agentProcessed: true,
       },
@@ -151,7 +151,7 @@ export const members: Member[] = [
     id: 'm2',
     name: 'Sita Ramaiah',
     phone: '+91-9812345678',
-    did: 'shg.chain/m/9022...7b',
+    did: 'saheli/m/9022...7b',
     trustScore: 780,
     trustGrade: 'GOOD',
     totalSavings: 28000,
@@ -168,7 +168,7 @@ export const members: Member[] = [
     id: 'm3',
     name: 'Priya Sharma',
     phone: '+91-9834567890',
-    did: 'shg.chain/m/4451...2c',
+    did: 'saheli/m/4451...2c',
     trustScore: 920,
     trustGrade: 'EXCELLENT',
     totalSavings: 65000,
@@ -215,7 +215,7 @@ export const loans: Loan[] = [
     dueDate: new Date(Date.now() + 2592000000).toISOString(),
     repaidAmount: 3250,
     createdAt: new Date(Date.now() - 2592000000).toISOString(),
-    txHash: 'ALGO_4F8A2B1C9D3E',
+    transactionId: 'TXN_4F8A2B1C9D3E',
   },
 ];
 
@@ -234,7 +234,7 @@ export const multiSigActions: MultiSigAction[] = [
   {
     id: 'ms2',
     type: 'yield_rebalance',
-    description: 'Folks Finance Yield Rebalance — Move to higher yield vault (5.2% APY)',
+    description: 'Fixed Deposit Pool Yield Rebalance — Move to higher yield pool (5.2% APY)',
     amount: 120000,
     requestedBy: 'AI Agent',
     signatures: ['leader1', 'leader2'],
@@ -254,7 +254,7 @@ export const shgGroups: SHGGroup[] = [
     activeLoans: '₹8.40 Lakh',
     totalLiquidity: 840000,
     yieldThisMonth: 4.2,
-    auditStatus: 'IMMUTABLE_OK',
+    auditStatus: 'VERIFIED',
     region: 'Karnataka',
   },
   {
@@ -266,7 +266,7 @@ export const shgGroups: SHGGroup[] = [
     activeLoans: '₹12.2 Lakh',
     totalLiquidity: 1220000,
     yieldThisMonth: 3.9,
-    auditStatus: 'IMMUTABLE_OK',
+    auditStatus: 'VERIFIED',
     region: 'Karnataka',
   },
   {
@@ -290,7 +290,7 @@ export const shgGroups: SHGGroup[] = [
     activeLoans: '₹5.80 Lakh',
     totalLiquidity: 580000,
     yieldThisMonth: 3.4,
-    auditStatus: 'IMMUTABLE_OK',
+    auditStatus: 'VERIFIED',
     region: 'Maharashtra',
   },
 ];
@@ -300,7 +300,7 @@ export const aiLog: AILogEntry[] = [
     id: 'ai1',
     type: 'yield_deploy',
     icon: 'CheckCircle2',
-    title: 'Deployed ₹50,000 to Folks Finance',
+    title: 'Deployed ₹50,000 to Fixed Deposit Pool',
     highlight: '4.2% yield',
     timestamp: new Date(Date.now() - 120000).toISOString(),
     amount: 50000,
@@ -335,7 +335,7 @@ export const aiLog: AILogEntry[] = [
     id: 'ai5',
     type: 'rebalance',
     icon: 'TrendingUp',
-    title: 'Rebalanced portfolio across 3 vaults',
+    title: 'Rebalanced portfolio across 3 pools',
     highlight: 'Est. return +0.3% APY',
     timestamp: new Date(Date.now() - 28800000).toISOString(),
     amount: 200000,
@@ -346,7 +346,7 @@ export const ledgerStream = [
   {
     id: 'ls1',
     event: 'Repayment Confirmed: LM Mandal',
-    txId: '0x82f...a231',
+    txId: 'TXN-82FA231',
     amount: 12400,
     type: 'credit',
     timestamp: new Date(Date.now() - 120000).toISOString(),
@@ -354,31 +354,31 @@ export const ledgerStream = [
   {
     id: 'ls2',
     event: 'Loan Disbursal: Saraswati Group',
-    txId: '0xc19...f842',
+    txId: 'TXN-C19F842',
     amount: -50000,
     type: 'debit',
     timestamp: new Date(Date.now() - 2700000).toISOString(),
   },
   {
     id: 'ls3',
-    event: "New d-SBT Minted: Member #4421",
-    txId: '0xd44...7e01',
+    event: 'Trust Score Updated: Member #4421',
+    txId: 'TXN-D447E01',
     amount: 0,
-    type: 'mint',
+    type: 'update',
     timestamp: new Date(Date.now() - 7200000).toISOString(),
   },
   {
     id: 'ls4',
     event: 'Grant Disbursed: Rural Development Fund',
-    txId: '0xf77...b399',
+    txId: 'TXN-F77B399',
     amount: 200000,
     type: 'credit',
     timestamp: new Date(Date.now() - 10800000).toISOString(),
   },
   {
     id: 'ls5',
-    event: 'Yield Harvested: Folks Finance Vault',
-    txId: '0xa22...c810',
+    event: 'Yield Harvested: Fixed Deposit Pool',
+    txId: 'TXN-A22C810',
     amount: 4200,
     type: 'credit',
     timestamp: new Date(Date.now() - 18000000).toISOString(),
@@ -406,5 +406,5 @@ export const institutionalStats = {
   aggregateTrustIndex: 92,
   repaymentRate: 99.2,
   lockedLiquidity: 18400000,
-  auditFrequency: '6s/Block',
+  auditFrequency: 'Real-time',
 };

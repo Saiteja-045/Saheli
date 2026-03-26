@@ -1,30 +1,26 @@
-import { CheckCircle2, ExternalLink, Download, Share2, Shield } from 'lucide-react';
+import { CheckCircle2, Download, Share2, Shield } from 'lucide-react';
 
 interface QRCodeDisplayProps {
   qrCode: string;        // base64 data URL
-  txHash: string;
-  explorerUrl: string;
+  transactionId: string;
   amount?: number;
   type?: string;
   memberName?: string;
-  walletDeepLink?: string;
   compact?: boolean;
 }
 
 export default function QRCodeDisplay({
   qrCode,
-  txHash,
-  explorerUrl,
+  transactionId,
   amount,
   type,
   memberName,
-  walletDeepLink,
   compact = false,
 }: QRCodeDisplayProps) {
   const handleDownload = () => {
     const a = document.createElement('a');
     a.href = qrCode;
-    a.download = `saheli-proof-${txHash.slice(0, 12)}.png`;
+    a.download = `saheli-proof-${transactionId.slice(0, 12)}.png`;
     a.click();
   };
 
@@ -34,19 +30,11 @@ export default function QRCodeDisplay({
         <img src={qrCode} alt="QR Proof" className="w-32 h-32 rounded-lg mb-3" />
         <div className="flex items-center gap-1 text-shg-secondary text-xs font-bold mb-1">
           <CheckCircle2 className="w-3 h-3" />
-          Blockchain Verified
+          Verified
         </div>
         <p className="text-[10px] font-mono text-muted-foreground text-center">
-          {txHash.slice(0, 24)}...
+          {transactionId.slice(0, 24)}...
         </p>
-        {walletDeepLink && (
-          <a
-            href={walletDeepLink}
-            className="mt-2 text-[10px] font-bold text-shg-primary hover:underline"
-          >
-            Open in Pera Wallet
-          </a>
-        )}
       </div>
     );
   }
@@ -67,7 +55,7 @@ export default function QRCodeDisplay({
       {/* Badge */}
       <div className="flex items-center gap-1.5 bg-shg-secondary/10 text-shg-secondary px-3 py-1.5 rounded-full text-xs font-bold mb-4">
         <CheckCircle2 className="w-3.5 h-3.5" />
-        Verified on Algorand Blockchain
+        Verified Transaction
       </div>
 
       {/* Details */}
@@ -91,8 +79,8 @@ export default function QRCodeDisplay({
           </div>
         )}
         <div className="flex justify-between text-sm pt-2 border-t border-border/50">
-          <span className="text-muted-foreground">TX Hash</span>
-          <span className="font-mono text-xs text-on-surface">{txHash.slice(0, 16)}...</span>
+          <span className="text-muted-foreground">Reference</span>
+          <span className="font-mono text-xs text-on-surface">{transactionId.slice(0, 16)}...</span>
         </div>
       </div>
 
@@ -105,27 +93,10 @@ export default function QRCodeDisplay({
           <Download className="w-4 h-4" />
           Download
         </button>
-        <a
-          href={explorerUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-shg-primary text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity"
-        >
-          <ExternalLink className="w-4 h-4" />
-          Verify
-        </a>
-        {walletDeepLink && (
-          <a
-            href={walletDeepLink}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-border rounded-xl text-sm font-semibold hover:bg-surface transition-colors"
-          >
-            Open in Pera
-          </a>
-        )}
         <button
           onClick={() => {
             if (navigator.share) {
-              navigator.share({ title: 'Saheli Proof', text: `TX: ${txHash}`, url: explorerUrl });
+              navigator.share({ title: 'Saheli Proof', text: `Ref: ${transactionId}` });
             }
           }}
           className="flex items-center justify-center gap-2 px-3 py-2.5 border border-border rounded-xl text-sm font-semibold hover:bg-surface transition-colors"

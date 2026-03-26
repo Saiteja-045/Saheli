@@ -9,7 +9,7 @@ type SendWhatsAppArgs = {
 type SendQRWhatsAppArgs = {
   toPhone: string;
   memberName?: string;
-  txHash: string;
+  transactionId: string;
   explorerUrl: string;
   qrDataUrl: string;
 };
@@ -130,17 +130,17 @@ export async function sendWhatsAppMessage({ toPhone, body, mediaUrl }: SendWhats
 export async function sendQRCodeWhatsAppReceipt({
   toPhone,
   memberName,
-  txHash,
+  transactionId,
   explorerUrl,
   qrDataUrl,
 }: SendQRWhatsAppArgs) {
-  const publicId = `qr-${txHash.slice(0, 16)}-${Date.now()}`;
+  const publicId = `qr-${transactionId.slice(0, 16)}-${Date.now()}`;
   const mediaUrl = await uploadQRCodeToCloudinary(qrDataUrl, publicId);
 
   const body = [
     `Namaste ${memberName || 'Member'}!`,
-    'Your SHG Chain transaction QR proof is ready.',
-    `Tx Hash: ${txHash}`,
+    'Your Saheli transaction QR proof is ready.',
+    `Transaction ID: ${transactionId}`,
     `Verify: ${explorerUrl}`,
   ].join('\n');
 

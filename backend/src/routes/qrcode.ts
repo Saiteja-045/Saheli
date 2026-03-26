@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
 import QRCode from 'qrcode';
-import { verifyTransaction, generateTxHash } from '../services/algorand';
-import { members } from '../data/mockData';
+import { verifyTransaction, generateTxHash } from '../services/txEngine';
 import { sendQRCodeWhatsAppReceipt } from '../services/whatsapp';
+import mongoose from 'mongoose';
+import User from '../models/User';
 
 const router = Router();
 
@@ -10,34 +11,37 @@ const router = Router();
 router.post('/generate', async (req: Request, res: Response) => {
   try {
     const {
-      txHash,
+      transactionId,
       memberId,
       memberName,
       memberPhone,
       amount,
       type,
-      walletAddress,
       autoSendWhatsApp = true,
     } = req.body;
 
-    const hash = txHash || generateTxHash();
-    const walletDeepLink = walletAddress
-      ? `algorand://${walletAddress}?amount=0&note=${encodeURIComponent(`saheli:${hash}`)}`
-      : undefined;
+    const hash = transactionId || generateTxHash();
+    let resolvedMemberName = memberName;
+    let resolvedPhone = memberPhone;
+
+    if ((!resolvedMemberName || !resolvedPhone) && memberId && mongoose.Types.ObjectId.isValid(memberId)) {
+      const member = await User.findById(memberId).select('name phone role').lean();
+      if (member && member.role === 'member') {
+        resolvedMemberName = resolvedMemberName || member.name;
+        resolvedPhone = resolvedPhone || member.phone;
+      }
+    }
 
     // Build the QR payload — this is what gets embedded in the QR code
     const qrPayload = JSON.stringify({
       platform: 'Saheli',
-      network: 'Algorand Testnet',
-      txHash: hash,
-      memberId: memberId || 'm1',
-      memberName: memberName || 'Lakshmi Devi',
+      transactionId: hash,
+      memberId: memberId || undefined,
+      memberName: resolvedMemberName || 'Member',
       amount,
       type: type || 'deposit',
       verified: true,
-      verifyUrl: `https://testnet.algoexplorer.io/tx/${hash}`,
-      walletAddress: walletAddress || null,
-      walletDeepLink: walletDeepLink || null,
+      verifyUrl: `/api/qr/verify/${hash}`,
       timestamp: new Date().toISOString(),
     });
 
@@ -53,8 +57,7 @@ router.post('/generate', async (req: Request, res: Response) => {
       },
     });
 
-    const fallbackPhone = memberId ? members.find((m) => m.id === memberId)?.phone : undefined;
-    const targetPhone = memberPhone || fallbackPhone;
+    const targetPhone = resolvedPhone;
 
     let whatsapp: {
       attempted: boolean;
@@ -73,9 +76,9 @@ router.post('/generate', async (req: Request, res: Response) => {
       try {
         const delivery = await sendQRCodeWhatsAppReceipt({
           toPhone: targetPhone,
-          memberName: memberName || 'Member',
-          txHash: hash,
-          explorerUrl: `https://testnet.algoexplorer.io/tx/${hash}`,
+          memberName: resolvedMemberName || 'Member',
+          transactionId: hash,
+          explorerUrl: `/api/qr/verify/${hash}`,
           qrDataUrl,
         });
         whatsapp = {
@@ -98,15 +101,13 @@ router.post('/generate', async (req: Request, res: Response) => {
     res.json({
       success: true,
       data: {
-        txHash: hash,
+        transactionId: hash,
         qrCode: qrDataUrl,
         payload: JSON.parse(qrPayload),
-        explorerUrl: `https://testnet.algoexplorer.io/tx/${hash}`,
-        walletDeepLink,
         whatsapp,
         message: whatsapp.sent
           ? '✅ QR proof generated and sent to member on WhatsApp.'
-          : '✅ QR proof generated. Share this with any bank officer to verify offline.',
+          : '✅ QR proof generated. Share this with any bank officer to verify.',
       },
     });
   } catch (err) {
@@ -114,18 +115,18 @@ router.post('/generate', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/qr/verify/:txHash
-router.get('/verify/:txHash', (req: Request, res: Response) => {
-  const { txHash } = req.params;
-  const result = verifyTransaction(txHash);
+// GET /api/qr/verify/:transactionId
+router.get('/verify/:transactionId', async (req: Request, res: Response) => {
+  const { transactionId } = req.params;
+  const result = await verifyTransaction(transactionId);
 
   res.json({
     success: true,
     data: {
-      txHash,
+      transactionId,
       ...result,
       message: result.valid
-        ? '✅ Transaction verified on Algorand blockchain'
+        ? '✅ Transaction verified successfully'
         : '❌ Transaction not found',
     },
   });

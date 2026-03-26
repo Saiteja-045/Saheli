@@ -10,7 +10,7 @@ const transactionSchema = new mongoose.Schema(
     },
     amount: { type: Number, required: true },
     description: { type: String, required: true },
-    txHash: { type: String },
+    transactionId: { type: String },
     status: { type: String, enum: ['confirmed', 'pending', 'failed'], default: 'pending' },
     agentProcessed: { type: Boolean, default: false },
   },

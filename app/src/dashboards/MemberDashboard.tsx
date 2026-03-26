@@ -23,7 +23,7 @@ import {
   Globe,
   Save,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
 import { useApiFetch } from '../hooks/useApi';
 import { membersApi, qrApi, agentApi } from '../lib/api';
@@ -31,7 +31,6 @@ import QRCodeDisplay from '../components/QRCodeDisplay';
 import LoanRequestModal from '../components/LoanRequestModal';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
-import { useWallet } from '../contexts/WalletContext';
 
 // Skeleton loader
 const Skeleton = ({ className = '' }: { className?: string }) => (
@@ -47,7 +46,7 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
   const dashboardRef = useRef<HTMLDivElement>(null);
   const [showLoanModal, setShowLoanModal] = useState(false);
   const [showQR, setShowQR] = useState(false);
-  const [qrData, setQrData] = useState<any>(null);
+  const [qrData, setQrData] = useState<{ qrCode: string; transactionId: string; explorerUrl: string; whatsapp?: { sent: boolean; attempted?: boolean; error?: string } } | null>(null);
   const [generatingQR, setGeneratingQR] = useState(false);
   const [settings, setSettings] = useState({
     language: 'English',
@@ -56,26 +55,31 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
   });
 
   const { user } = useAuth();
-  const { accountAddress } = useWallet();
-  const memberId = user?._id || 'm1'; // fallback to m1 only if no user (shouldn't happen)
+  const memberId = user?._id || '';
 
-  const { data: rawMember, loading, error } = useApiFetch(() => membersApi.getById(memberId));
+  const { data: rawMember, loading, error } = useApiFetch(() =>
+    memberId ? membersApi.getById(memberId) : Promise.resolve(null as any),
+    [memberId],
+  );
   const { data: repayments } = useApiFetch(() => agentApi.getRepayments());
 
   // If it's a real MongoDB user newly registered, they might lack these fields from mockData
-  const member = rawMember ? {
-    ...rawMember,
-    did: rawMember.did || `did:algo:${rawMember._id?.slice(0, 8) || 'new'}`,
-    repaymentRate: rawMember.repaymentRate ?? 100,
-    trustScore: rawMember.trustScore ?? 500,
-    trustGrade: rawMember.trustGrade || 'New Member',
-    totalSavings: rawMember.totalSavings ?? 0,
-    activeLoans: rawMember.activeLoans ?? 0,
-    activeLoansAmount: rawMember.activeLoansAmount ?? 0,
-    yieldEarned: rawMember.yieldEarned ?? 0,
-    transactions: rawMember.transactions || [],
-    badges: rawMember.badges || ['New Member'],
-  } : null;
+  const member = React.useMemo(() => {
+    if (!rawMember) return null;
+    return {
+      ...rawMember,
+      did: rawMember.did || `ID-${rawMember._id?.slice(0, 8) || 'new'}`,
+      repaymentRate: rawMember.repaymentRate ?? 100,
+      trustScore: rawMember.trustScore ?? 500,
+      trustGrade: rawMember.trustGrade || 'New Member',
+      totalSavings: rawMember.totalSavings ?? 0,
+      activeLoans: rawMember.activeLoans ?? 0,
+      activeLoansAmount: rawMember.activeLoansAmount ?? 0,
+      yieldEarned: rawMember.yieldEarned ?? 0,
+      transactions: rawMember.transactions || [],
+      badges: rawMember.badges || ['New Member'],
+    };
+  }, [rawMember]);
 
 
   useEffect(() => {
@@ -97,7 +101,6 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
         memberName: member?.name,
         memberPhone: user?.phone,
         type: 'identity',
-        walletAddress: accountAddress || undefined,
         autoSendWhatsApp: true,
       });
       setQrData(qr);
@@ -137,7 +140,7 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
               <p className="text-xs font-bold uppercase tracking-wider text-shg-primary mb-2">AI Assistant</p>
               <h2 className="text-2xl font-black font-headline text-on-surface">WhatsApp + Voice Agent</h2>
               <p className="text-sm text-muted-foreground mt-2 max-w-xl">
-                Use the live assistant to request loans, check balances, and generate blockchain QR proof in natural language.
+                Use the live assistant to request loans, check balances, and generate secure proof in natural language.
               </p>
             </div>
             <button
@@ -153,7 +156,7 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
         <div className="bg-gradient-to-br from-navy to-navy-light text-white rounded-2xl p-6 border border-border/50">
           <h3 className="font-bold mb-3">Agent Status</h3>
           <p className="text-sm text-white/75">
-            AI loan evaluator and repayment scheduler are active. Notifications are synced from on-chain events and WhatsApp commands.
+            AI loan evaluator and repayment scheduler are active. Notifications are synced from database events and WhatsApp commands.
           </p>
         </div>
       </div>
@@ -173,7 +176,7 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
             <p className="text-sm text-muted-foreground">No active repayment schedules yet.</p>
           ) : (
             <div className="space-y-4">
-              {repayments.map((r: any) => (
+              {repayments.map((r: { loanId: string; memberName: string; paidInstallments: number; totalInstallments: number; installmentAmount: number; nextDueDate: string; deductionSource: string }) => (
                 <div key={r.loanId} className="p-4 bg-surface rounded-xl border border-border/40">
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -278,7 +281,7 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
           </div>
           <div className="p-4 rounded-xl bg-surface border border-border/50">
             <p className="text-sm font-semibold text-on-surface">SHG Leader Escalation</p>
-            <p className="text-xs text-muted-foreground mt-1">Loan and payment disputes are escalated to your SHG leader with on-chain references.</p>
+            <p className="text-xs text-muted-foreground mt-1">Loan and payment disputes are escalated to your SHG leader with internal references.</p>
           </div>
           <button
             onClick={() => toast.success('Support ticket created. We will contact you on WhatsApp shortly.')}
@@ -315,7 +318,7 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
             </button>
             <span className="bg-shg-secondary/10 text-shg-secondary px-4 py-1.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 bg-shg-secondary rounded-full animate-pulse" />
-              Blockchain Verified
+              System Verified
             </span>
           </div>
         </div>
@@ -325,7 +328,7 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column */}
         <div className="lg:col-span-8 space-y-6">
-          {/* d-SBT Digital ID Card */}
+          {/* Digital ID Card */}
           <div className="dashboard-card relative overflow-hidden rounded-2xl bg-gradient-to-br from-shg-primary to-blue-700 p-8 text-white shadow-xl">
             <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-white/10 rounded-full blur-3xl" />
             <div className="absolute bottom-0 left-0 -ml-10 -mb-10 w-60 h-60 bg-shg-secondary/20 rounded-full blur-2xl" />
@@ -342,7 +345,7 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
                     ) : (
                       <h3 className="font-headline font-bold text-xl leading-none">{member?.name}</h3>
                     )}
-                    <p className="text-white/70 text-sm">{loading ? '...' : `DID: ${member?.did}`}</p>
+                    <p className="text-white/70 text-sm">{loading ? '...' : `Profile ID: ${member?.did}`}</p>
                   </div>
                 </div>
                 <div className="space-y-4">
@@ -351,7 +354,7 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
                     Repayment consistency: {loading ? '...' : `${member?.repaymentRate}%`}
                   </div>
                   <p className="text-white/80 max-w-sm text-sm">
-                    Your decentralized Soulbound Token (d-SBT) represents your creditworthiness in the global SHG ecosystem.
+                    Your Digital Profile represents your creditworthiness in the global SHG ecosystem.
                   </p>
                 </div>
               </div>
@@ -395,7 +398,7 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
                 <p className="text-2xl font-extrabold font-headline">₹{member?.totalSavings?.toLocaleString('en-IN')}</p>
               )}
               <div className="mt-4 pt-4 border-t border-border/50 flex justify-between items-center">
-                <span className="text-[10px] text-muted-foreground">Gas Fees</span>
+                <span className="text-[10px] text-muted-foreground">Platform Fees</span>
                 <span className="text-[10px] font-bold text-shg-secondary">₹0 (Subsidized)</span>
               </div>
             </div>
@@ -455,7 +458,7 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
               </div>
             ) : (
               <div className="space-y-4">
-                {(member?.transactions || []).slice(0, 4).map((tx: any) => (
+                {(member?.transactions || []).slice(0, 4).map((tx: { id: string; type: string; agentProcessed?: boolean; description: string; transactionId?: string; amount: number; timestamp: string }) => (
                   <div key={tx.id} className="flex items-center gap-4 group">
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform ${
                       tx.type === 'deposit' ? 'bg-shg-secondary/10 text-shg-secondary' :
@@ -469,7 +472,7 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
                     <div className="flex-1">
                       <p className="text-sm font-semibold">{tx.description}</p>
                       <p className="text-xs text-muted-foreground">
-                        {tx.agentProcessed ? 'AI Agent processed' : 'Manual transaction'} · {tx.txHash?.slice(0, 12)}...
+                        {tx.agentProcessed ? 'AI Agent processed' : 'Manual transaction'} · ID: {tx.transactionId?.slice(0, 12)}...
                       </p>
                     </div>
                     <div className="text-right">
@@ -493,15 +496,13 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
           <div className="dashboard-card bg-white p-6 rounded-2xl border border-border/50 text-center">
             <h3 className="font-headline font-bold text-lg mb-2">Offline Proof</h3>
             <p className="text-xs text-muted-foreground mb-6">
-              Share this QR with bank officials to verify your chain-identity without internet.
+              Share this QR with bank officials to verify your identity without internet.
             </p>
             {showQR && qrData ? (
               <QRCodeDisplay
                 qrCode={qrData.qrCode}
-                txHash={qrData.txHash}
-                explorerUrl={qrData.explorerUrl}
+                transactionId={qrData.transactionId}
                 memberName={member?.name}
-                walletDeepLink={qrData.walletDeepLink}
                 compact={true}
               />
             ) : (
@@ -574,7 +575,7 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
                 <span className="ml-auto text-[9px] font-bold text-shg-primary bg-shg-primary/10 px-2 py-0.5 rounded">AI MANAGED</span>
               </div>
               <div className="space-y-3">
-                {repayments.slice(0, 2).map((r: any) => (
+                {repayments.slice(0, 2).map((r: { loanId: string; memberName: string; paidInstallments: number; totalInstallments: number; installmentAmount: number; nextDueDate: string; deductionSource: string }) => (
                   <div key={r.loanId} className="p-3 bg-surface rounded-xl">
                     <div className="flex justify-between items-start mb-2">
                       <div>

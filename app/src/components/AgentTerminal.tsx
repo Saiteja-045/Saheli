@@ -7,7 +7,7 @@ interface AgentLogEntry {
   message: string;
   detail?: string;
   amount?: number;
-  txHash?: string;
+  transactionId?: string;
   timestamp: string;
 }
 
@@ -81,7 +81,7 @@ export default function AgentTerminal({ entries }: { entries: AgentLogEntry[] })
 
       {/* Boot line */}
       <div className="px-4 py-2 text-[10px]" style={{ color: '#4b5563', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-        $ agent start --mode=autonomous --network=algorand-testnet
+        $ agent start --mode=autonomous --network=production
       </div>
 
       {/* Log entries */}
@@ -129,9 +129,9 @@ export default function AgentTerminal({ entries }: { entries: AgentLogEntry[] })
                     {entry.detail}
                   </p>
                 )}
-                {entry.txHash && (
+                {entry.transactionId && (
                   <p className="text-[9px] mt-0.5 font-mono" style={{ color: '#60a5fa' }}>
-                    tx: {entry.txHash.slice(0, 24)}...
+                    id: {entry.transactionId.slice(0, 24)}...
                   </p>
                 )}
               </div>

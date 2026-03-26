@@ -266,6 +266,69 @@ cd backend
 npm run build
 ```
 
+## MERN Readiness
+
+The project now runs as a MERN stack in runtime paths:
+- MongoDB is the source of truth for members, loans, transactions, multi-leader approvals, stats, and agent flows.
+- Express + Node APIs serve all business logic under `/api/*`.
+- React frontend calls env-configurable API base URL (`VITE_API_BASE_URL`, default `/api`).
+- No API route depends on runtime in-memory mock arrays.
+
+## Deployment
+
+### Option A: Docker Compose (recommended)
+
+From repository root:
+
+```bash
+docker compose up --build
+```
+
+Services:
+- Frontend: `http://localhost:8080`
+- Backend: `http://localhost:3001`
+- MongoDB: `mongodb://localhost:27017/saheli`
+
+### Option B: Separate Process Deployment
+
+1) Backend
+
+```bash
+cd backend
+npm ci
+npm run build
+npm run start
+```
+
+2) Frontend
+
+```bash
+cd app
+npm ci
+npm run build
+npm run preview
+```
+
+### Required Environment Variables
+
+Backend (`backend/.env`):
+- `PORT`
+- `NODE_ENV`
+- `MONGODB_URI`
+- `JWT_SECRET`
+- `CORS_ORIGINS` (comma-separated)
+
+Frontend (`app/.env`):
+- `VITE_API_BASE_URL` (use `/api` when reverse-proxied behind same host)
+
+### Production Bootstrap
+
+After backend starts, seed demo users once:
+
+```bash
+curl -X POST http://127.0.0.1:3001/api/auth/seed-demo
+```
+
 ## Known Demo Constraints
 
 - Some blockchain operations are intentionally mocked for deterministic judging demos

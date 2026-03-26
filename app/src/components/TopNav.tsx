@@ -1,6 +1,5 @@
-import { Search, Bell, Bot, User, Menu, X, Wallet, LogOut } from 'lucide-react';
+import { Search, Bell, Bot, User, Menu, X, LogOut } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { useWallet } from '../contexts/WalletContext';
 import { useApiPolling } from '../hooks/useApi';
 import { aiAgentApi } from '../lib/api';
 
@@ -26,11 +25,6 @@ export default function TopNav({ currentRole, onOpenAIAssistant, onSignOut }: To
   };
 
   const { data: aiLog } = useApiPolling(() => aiAgentApi.getLog(), 10000);
-
-  const { isConnected, accountAddress, connectWallet, disconnectWallet } = useWallet();
-
-  const formatAddress = (address: string) =>
-    `${address.slice(0, 4)}...${address.slice(-4)}`;
 
   const notifications = useMemo(
     () =>
@@ -66,7 +60,7 @@ export default function TopNav({ currentRole, onOpenAIAssistant, onSignOut }: To
             <Search className="w-4 h-4 text-muted-foreground ml-3" />
             <input
               type="text"
-              placeholder={currentRole ? 'Search transactions...' : 'Search SHG or d-SBT ID...'}
+              placeholder={currentRole ? 'Search transactions...' : 'Search SHG or member ID...'}
               className="bg-transparent border-none text-sm w-full py-2 px-2 focus:outline-none"
               onFocus={() => setSearchOpen(true)}
               onBlur={() => setSearchOpen(false)}
@@ -112,29 +106,10 @@ export default function TopNav({ currentRole, onOpenAIAssistant, onSignOut }: To
             <Bot className="w-5 h-5 text-shg-primary" />
           </button>
 
-          {/* Account / Wallet */}
-          {isConnected && accountAddress ? (
-            <div className="flex items-center gap-2">
-              <span className="hidden md:inline-block text-xs font-medium text-shg-primary bg-shg-primary/10 px-2 py-1 rounded-md">
-                {formatAddress(accountAddress)}
-              </span>
-              <button
-                onClick={disconnectWallet}
-                className="w-8 h-8 rounded-full bg-shg-primary/10 flex items-center justify-center hover:bg-shg-primary/20 transition-colors"
-                title="Disconnect Wallet"
-              >
-                <User className="w-4 h-4 text-shg-primary" />
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={connectWallet}
-              className="flex items-center gap-2 bg-shg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-shg-primary/90 transition-all shadow-sm"
-            >
-              <Wallet className="w-4 h-4" />
-              <span className="hidden md:inline">Connect Pera</span>
-            </button>
-          )}
+          {/* Account */}
+          <div className="w-8 h-8 rounded-full bg-shg-primary/10 flex items-center justify-center">
+            <User className="w-4 h-4 text-shg-primary" />
+          </div>
 
           {/* Sign Out - Desktop */}
           {onSignOut && (
