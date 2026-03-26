@@ -2,8 +2,10 @@ import crypto from 'crypto';
 
 type SendWhatsAppArgs = {
   toPhone: string;
-  body: string;
+  body?: string;
   mediaUrl?: string;
+  contentSid?: string;
+  contentVariables?: Record<string, string | number | boolean>;
 };
 
 type SendQRWhatsAppArgs = {
@@ -31,6 +33,20 @@ function getTwilioFromAddress(): string {
     throw new Error('TWILIO_WHATSAPP_FROM or TWILIO_WHATSAPP_NUMBER is not configured');
   }
   return normalizePhone(from);
+}
+
+function getTwilioStatusCallbackUrl(): string | undefined {
+  const explicit = process.env.TWILIO_STATUS_CALLBACK_URL?.trim();
+  if (explicit) {
+    return explicit;
+  }
+
+  const publicBaseUrl = process.env.PUBLIC_BASE_URL?.trim();
+  if (!publicBaseUrl) {
+    return undefined;
+  }
+
+  return `${publicBaseUrl.replace(/\/$/, '')}/webhook/twilio/status`;
 }
 
 async function uploadQRCodeToCloudinary(qrDataUrl: string, publicId: string): Promise<string> {
@@ -84,21 +100,51 @@ async function uploadQRCodeToCloudinary(qrDataUrl: string, publicId: string): Pr
   return uploadJson.secure_url;
 }
 
-export async function sendWhatsAppMessage({ toPhone, body, mediaUrl }: SendWhatsAppArgs) {
+export async function sendWhatsAppMessage({
+  toPhone,
+  body,
+  mediaUrl,
+  contentSid,
+  contentVariables,
+}: SendWhatsAppArgs) {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const from = getTwilioFromAddress();
+  const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
 
   if (!accountSid || !authToken) {
     throw new Error('TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN is not configured');
   }
 
+  if (!body && !contentSid) {
+    throw new Error('Either body or contentSid is required to send a WhatsApp message');
+  }
+
   const params = new URLSearchParams();
   params.set('To', normalizePhone(toPhone));
-  params.set('From', from);
-  params.set('Body', body);
+  if (messagingServiceSid) {
+    params.set('MessagingServiceSid', messagingServiceSid);
+  } else {
+    params.set('From', getTwilioFromAddress());
+  }
+
+  if (body) {
+    params.set('Body', body);
+  }
+
+  if (contentSid) {
+    params.set('ContentSid', contentSid);
+    if (contentVariables && Object.keys(contentVariables).length > 0) {
+      params.set('ContentVariables', JSON.stringify(contentVariables));
+    }
+  }
+
   if (mediaUrl) {
     params.append('MediaUrl', mediaUrl);
+  }
+
+  const statusCallback = getTwilioStatusCallbackUrl();
+  if (statusCallback) {
+    params.set('StatusCallback', statusCallback);
   }
 
   const twilioRes = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
@@ -155,4 +201,16 @@ export async function sendQRCodeWhatsAppReceipt({
     messageSid: message.sid,
     twilioStatus: message.status,
   };
+}
+
+export async function sendWhatsAppTemplateMessage(args: {
+  toPhone: string;
+  contentSid: string;
+  contentVariables?: Record<string, string | number | boolean>;
+}) {
+  return sendWhatsAppMessage({
+    toPhone: args.toPhone,
+    contentSid: args.contentSid,
+    contentVariables: args.contentVariables,
+  });
 }

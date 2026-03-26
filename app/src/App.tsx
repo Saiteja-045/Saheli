@@ -18,6 +18,7 @@ import WhatsAppSection from './sections/WhatsAppSection';
 import ImpactMetrics from './sections/ImpactMetrics';
 import ContactSection from './sections/ContactSection';
 import WhatsAppDemo from './components/WhatsAppDemo';
+import AutoTranslate from './components/AutoTranslate';
 import { useAuth } from './contexts/AuthContext';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -39,6 +40,12 @@ function getDefaultSection(role: UserRole): DashboardSection {
   if (role === 'member') return 'passport';
   if (role === 'leader') return 'treasury';
   return 'scanner';
+}
+
+function getRoleSections(role: UserRole): DashboardSection[] {
+  if (role === 'member') return ['passport', 'treasury', 'audit', 'ai', 'auto-repayment', 'settings', 'support'];
+  if (role === 'leader') return ['treasury', 'audit', 'ai', 'settings', 'support'];
+  return ['scanner', 'audit', 'grants', 'settings', 'support'];
 }
 
 function App() {
@@ -78,6 +85,17 @@ function App() {
     setView('auth');
   };
 
+  const handleSectionSearch = (query: string) => {
+    if (!user) return;
+    const q = query.toLowerCase().trim();
+    if (!q) return;
+    const sections = getRoleSections(user.role as UserRole);
+    const match = sections.find((s) => s.toLowerCase().includes(q));
+    if (match) {
+      setActiveSection(match);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
@@ -92,6 +110,7 @@ function App() {
   if (view === 'auth') {
     return (
       <>
+        <AutoTranslate />
         <Toaster position="top-right" richColors />
         <AuthPage onSuccess={handleAuthSuccess} />
       </>
@@ -104,12 +123,14 @@ function App() {
 
     return (
       <div className="min-h-screen bg-surface">
+        <AutoTranslate />
         <Toaster position="top-right" richColors />
         <TopNav
           currentRole={safeRole}
           authRole={authRole}
           onOpenAIAssistant={() => setShowWhatsAppDemo(true)}
           onSignOut={handleSignOut}
+          onSectionSearch={handleSectionSearch}
         />
         <Sidebar
           currentRole={safeRole}
@@ -134,6 +155,7 @@ function App() {
   // Landing
   return (
     <div className="min-h-screen bg-surface">
+      <AutoTranslate />
       <Toaster position="top-right" richColors />
       <TopNav />
       <HeroSection onRoleSelect={handleRoleSelectFromHero} onOpenWhatsApp={() => setShowWhatsAppDemo(true)} />

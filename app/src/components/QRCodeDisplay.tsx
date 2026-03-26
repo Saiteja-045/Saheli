@@ -17,6 +17,8 @@ export default function QRCodeDisplay({
   memberName,
   compact = false,
 }: QRCodeDisplayProps) {
+  const walletLink = walletDeepLink || 'https://perawallet.app/';
+
   const handleDownload = () => {
     const a = document.createElement('a');
     a.href = qrCode;
@@ -35,6 +37,17 @@ export default function QRCodeDisplay({
         <p className="text-[10px] font-mono text-muted-foreground text-center">
           {transactionId.slice(0, 24)}...
         </p>
+<<<<<<< HEAD
+=======
+        {walletLink && (
+          <a
+            href={walletLink}
+            className="mt-2 text-[10px] font-bold text-shg-primary hover:underline"
+          >
+            Open in Pera Wallet
+          </a>
+        )}
+>>>>>>> 6cd127775d3326dac72f1b349e2afe7f4ac32378
       </div>
     );
   }
@@ -93,6 +106,26 @@ export default function QRCodeDisplay({
           <Download className="w-4 h-4" />
           Download
         </button>
+<<<<<<< HEAD
+=======
+        <a
+          href={explorerUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-shg-primary text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity"
+        >
+          <ExternalLink className="w-4 h-4" />
+          Verify
+        </a>
+        {walletLink && (
+          <a
+            href={walletLink}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-border rounded-xl text-sm font-semibold hover:bg-surface transition-colors"
+          >
+            Open in Pera
+          </a>
+        )}
+>>>>>>> 6cd127775d3326dac72f1b349e2afe7f4ac32378
         <button
           onClick={() => {
             if (navigator.share) {

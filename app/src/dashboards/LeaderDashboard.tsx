@@ -61,6 +61,7 @@ export default function LeaderDashboard({ isReadOnly = false, activeSection = 't
   const { data: treasury, loading: loadingTreasury } = useApiFetch(() => statsApi.getTreasury());
   const { data: pendingActions, loading: loadingActions, refetch: refetchActions } = useApiPolling(() => multisigApi.getPending(), 4000);
   const { data: aiLog, loading: loadingLog } = useApiPolling(() => aiAgentApi.getLog(), 8000);
+  const { data: aiInsights } = useApiFetch(() => aiAgentApi.getInsights());
   const { data: agentLog, refetch: refetchAgentLog } = useApiPolling(() => agentApi.getLog(), 6000);
   const { data: vaultData, loading: loadingVaults, refetch: refetchVaults } = useApiFetch(() => agentApi.getVaults());
   const { data: members } = useApiFetch(() => membersApi.getAll());
@@ -72,6 +73,7 @@ export default function LeaderDashboard({ isReadOnly = false, activeSection = 't
   const { mutate: approveLoan, loading: approvingLoan } = useApiMutation((id: string) => loansApi.approve(id));
 
   useEffect(() => {
+<<<<<<< HEAD
     if (!txForm.memberId && members && members.length > 0) {
       const firstMemberId = members[0]._id || members[0].id || '';
       setTxForm((prev) => ({ ...prev, memberId: firstMemberId }));
@@ -80,9 +82,13 @@ export default function LeaderDashboard({ isReadOnly = false, activeSection = 't
 
   useEffect(() => {
     if (!loadingTreasury) {
+=======
+    const root = dashboardRef.current;
+    if (!loadingTreasury && root && root.querySelector('.dashboard-card')) {
+>>>>>>> 6cd127775d3326dac72f1b349e2afe7f4ac32378
       const ctx = gsap.context(() => {
         gsap.from('.dashboard-card', { y: 40, opacity: 0, duration: 0.6, stagger: 0.1, ease: 'power2.out' });
-      }, dashboardRef);
+      }, root);
       return () => ctx.revert();
     }
   }, [loadingTreasury]);
@@ -237,6 +243,68 @@ export default function LeaderDashboard({ isReadOnly = false, activeSection = 't
             <Save className="w-4 h-4" />
             Save Settings
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeSection === 'ai') {
+    return (
+      <div className="p-6 lg:p-10 max-w-5xl mx-auto space-y-6">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-shg-primary mb-2">AI Insights</p>
+          <h2 className="text-2xl font-black font-headline text-on-surface">Agentic Recommendations</h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {(aiInsights?.insights || []).map((insight: any, idx: number) => (
+            <div key={idx} className="bg-white border border-border/50 rounded-2xl p-5">
+              <p className="text-xs font-bold uppercase text-muted-foreground">{insight.type?.replace(/_/g, ' ')}</p>
+              <h3 className="font-bold text-on-surface mt-2">{insight.title}</h3>
+              <p className="text-sm text-muted-foreground mt-2">{insight.body}</p>
+              <span className={`inline-flex mt-3 px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                insight.priority === 'high' ? 'bg-red-50 text-red-700' : insight.priority === 'medium' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'
+              }`}>
+                {insight.priority} priority
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (activeSection === 'audit') {
+    return (
+      <div className="p-6 lg:p-10 max-w-5xl mx-auto space-y-6">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-shg-primary mb-2">Leader Audit</p>
+          <h2 className="text-2xl font-black font-headline text-on-surface">Approvals and Agent Logs</h2>
+        </div>
+        <div className="bg-white border border-border/50 rounded-2xl p-6">
+          <h3 className="font-bold mb-3">Pending Multi-Sig Actions</h3>
+          {(pendingActions || []).length === 0 ? (
+            <p className="text-sm text-muted-foreground">No pending actions.</p>
+          ) : (
+            <div className="space-y-3">
+              {(pendingActions || []).map((action: any) => (
+                <div key={action.id} className="p-3 bg-surface rounded-lg border border-border/40">
+                  <p className="text-sm font-semibold">{action.description}</p>
+                  <p className="text-xs text-muted-foreground">{action.signatures.length}/{action.signaturesRequired} approvals</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="bg-white border border-border/50 rounded-2xl p-6">
+          <h3 className="font-bold mb-3">AI/Agent Activity</h3>
+          <div className="space-y-2">
+            {(aiLog || []).slice(0, 8).map((entry: any) => (
+              <div key={entry.id} className="text-sm p-3 bg-surface rounded-lg border border-border/30">
+                <span className="font-semibold">{entry.title}</span>
+                <span className="text-muted-foreground text-xs block mt-1">{timeAgo(entry.timestamp)}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );

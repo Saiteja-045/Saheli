@@ -1,6 +1,11 @@
 import { Router, Request, Response } from 'express';
 import QRCode from 'qrcode';
+<<<<<<< HEAD
 import { verifyTransaction, generateTxHash } from '../services/txEngine';
+=======
+import { verifyTransaction, generateTxHash, registerTransactionLifecycle } from '../services/algorand';
+import { members } from '../data/mockData';
+>>>>>>> 6cd127775d3326dac72f1b349e2afe7f4ac32378
 import { sendQRCodeWhatsAppReceipt } from '../services/whatsapp';
 import mongoose from 'mongoose';
 import User from '../models/User';
@@ -20,6 +25,7 @@ router.post('/generate', async (req: Request, res: Response) => {
       autoSendWhatsApp = true,
     } = req.body;
 
+<<<<<<< HEAD
     const hash = transactionId || generateTxHash();
     let resolvedMemberName = memberName;
     let resolvedPhone = memberPhone;
@@ -31,6 +37,19 @@ router.post('/generate', async (req: Request, res: Response) => {
         resolvedPhone = resolvedPhone || member.phone;
       }
     }
+=======
+    const hash = txHash || generateTxHash();
+    registerTransactionLifecycle({
+      txHash: hash,
+      type: type || 'identity_proof',
+      amount: Number(amount || 0),
+      initialStatus: 'confirmed',
+      autoConfirm: false,
+    });
+    const walletDeepLink = walletAddress
+      ? `algorand://${walletAddress}?note=${encodeURIComponent(`saheli:${hash}`)}`
+      : `https://perawallet.app/`;
+>>>>>>> 6cd127775d3326dac72f1b349e2afe7f4ac32378
 
     // Build the QR payload — this is what gets embedded in the QR code
     const qrPayload = JSON.stringify({
@@ -115,10 +134,17 @@ router.post('/generate', async (req: Request, res: Response) => {
   }
 });
 
+<<<<<<< HEAD
 // GET /api/qr/verify/:transactionId
 router.get('/verify/:transactionId', async (req: Request, res: Response) => {
   const { transactionId } = req.params;
   const result = await verifyTransaction(transactionId);
+=======
+// GET /api/qr/verify/:txHash
+router.get('/verify/:txHash', async (req: Request, res: Response) => {
+  const { txHash } = req.params;
+  const result = await verifyTransaction(txHash);
+>>>>>>> 6cd127775d3326dac72f1b349e2afe7f4ac32378
 
   res.json({
     success: true,

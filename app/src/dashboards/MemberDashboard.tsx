@@ -20,7 +20,6 @@ import {
   LifeBuoy,
   Bell,
   MessageSquare,
-  Globe,
   Save,
 } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
@@ -31,6 +30,11 @@ import QRCodeDisplay from '../components/QRCodeDisplay';
 import LoanRequestModal from '../components/LoanRequestModal';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
+<<<<<<< HEAD
+=======
+import { useWallet } from '../contexts/WalletContext';
+import { useLanguage } from '../contexts/LanguageContext';
+>>>>>>> 6cd127775d3326dac72f1b349e2afe7f4ac32378
 
 // Skeleton loader
 const Skeleton = ({ className = '' }: { className?: string }) => (
@@ -42,25 +46,82 @@ interface MemberDashboardProps {
   onOpenAIAssistant?: () => void;
 }
 
+type MemberSettings = {
+  language: string;
+  whatsappAlerts: boolean;
+  weeklyDigest: boolean;
+};
+
+function getMemberSettingsStorageKey(memberId?: string) {
+  return `saheli-member-settings:${memberId || 'anonymous'}`;
+}
+
+function loadMemberSettings(memberId?: string): MemberSettings | null {
+  try {
+    const raw = localStorage.getItem(getMemberSettingsStorageKey(memberId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<MemberSettings>;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      language: typeof parsed.language === 'string' ? parsed.language : 'English',
+      whatsappAlerts: typeof parsed.whatsappAlerts === 'boolean' ? parsed.whatsappAlerts : true,
+      weeklyDigest: typeof parsed.weeklyDigest === 'boolean' ? parsed.weeklyDigest : true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveMemberSettings(memberId: string | undefined, settings: MemberSettings) {
+  try {
+    localStorage.setItem(getMemberSettingsStorageKey(memberId), JSON.stringify(settings));
+  } catch {
+    // Ignore storage write failures.
+  }
+}
+
 export default function MemberDashboard({ activeSection = 'passport', onOpenAIAssistant }: MemberDashboardProps) {
   const dashboardRef = useRef<HTMLDivElement>(null);
   const [showLoanModal, setShowLoanModal] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [qrData, setQrData] = useState<{ qrCode: string; transactionId: string; explorerUrl: string; whatsapp?: { sent: boolean; attempted?: boolean; error?: string } } | null>(null);
   const [generatingQR, setGeneratingQR] = useState(false);
-  const [settings, setSettings] = useState({
+  const [settings, setSettings] = useState<MemberSettings>({
     language: 'English',
     whatsappAlerts: true,
     weeklyDigest: true,
   });
+  const [auditQuery, setAuditQuery] = useState('');
 
   const { user } = useAuth();
+<<<<<<< HEAD
   const memberId = user?._id || '';
 
   const { data: rawMember, loading, error } = useApiFetch(() =>
     memberId ? membersApi.getById(memberId) : Promise.resolve(null as any),
     [memberId],
   );
+=======
+  const { accountAddress } = useWallet();
+  const { language, setLanguage, t, languages, getLanguageLabel } = useLanguage();
+  const memberId = user?._id || 'm1'; // fallback to m1 only if no user (shouldn't happen)
+
+  useEffect(() => {
+    const saved = loadMemberSettings(memberId);
+    if (saved) {
+      setSettings(saved);
+      if (saved.language !== language) {
+        setLanguage(saved.language as any);
+      }
+      return;
+    }
+
+    setSettings((s) => ({ ...s, language }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memberId]);
+
+  const { data: rawMember, loading, error } = useApiFetch(() => membersApi.getById(memberId));
+>>>>>>> 6cd127775d3326dac72f1b349e2afe7f4ac32378
   const { data: repayments } = useApiFetch(() => agentApi.getRepayments());
 
   // If it's a real MongoDB user newly registered, they might lack these fields from mockData
@@ -81,14 +142,19 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
     };
   }, [rawMember]);
 
+  useEffect(() => {
+    setSettings((s) => ({ ...s, language }));
+  }, [language]);
+
 
   useEffect(() => {
-    if (!loading && member) {
+    const root = dashboardRef.current;
+    if (!loading && member && root && root.querySelector('.dashboard-card')) {
       const ctx = gsap.context(() => {
         gsap.from('.dashboard-card', {
           y: 40, opacity: 0, duration: 0.6, stagger: 0.1, ease: 'power2.out'
         });
-      }, dashboardRef);
+      }, root);
       return () => ctx.revert();
     }
   }, [loading, member]);
@@ -207,32 +273,33 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
     return (
       <div className="p-6 lg:p-10 max-w-4xl mx-auto space-y-6">
         <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-shg-primary mb-2">Preferences</p>
-          <h2 className="text-2xl font-black font-headline text-on-surface">Settings</h2>
+          <p className="text-xs font-bold uppercase tracking-wider text-shg-primary mb-2">{t('preferences', 'Preferences')}</p>
+          <h2 className="text-2xl font-black font-headline text-on-surface">{t('settings', 'Settings')}</h2>
         </div>
         <div className="bg-white border border-border/50 rounded-2xl p-6 space-y-5">
           <div>
-            <label className="text-xs font-bold uppercase text-muted-foreground">Preferred Language</label>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              {['English', 'Hindi', 'Telugu'].map((lang) => (
-                <button
-                  key={lang}
-                  onClick={() => setSettings((s) => ({ ...s, language: lang }))}
-                  className={`py-2 rounded-lg border text-sm font-semibold ${settings.language === lang ? 'bg-shg-primary text-white border-shg-primary' : 'border-border hover:bg-surface'}`}
-                >
-                  <span className="inline-flex items-center gap-1">
-                    <Globe className="w-3.5 h-3.5" />
-                    {lang}
-                  </span>
-                </button>
+            <label className="text-xs font-bold uppercase text-muted-foreground">{t('preferredLanguage', 'Preferred Language')}</label>
+            <select
+              value={settings.language}
+              onChange={(e) => {
+                const next = e.target.value as typeof language;
+                setLanguage(next);
+                toast.success(`${t('languageUpdated', 'Language updated')}: ${getLanguageLabel(next)}`);
+              }}
+              className="mt-2 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm font-medium text-on-surface focus:outline-none focus:ring-2 focus:ring-shg-primary/30"
+            >
+              {languages.map((lang) => (
+                <option key={lang} value={lang}>
+                  {getLanguageLabel(lang)}
+                </option>
               ))}
-            </div>
+            </select>
           </div>
 
           <div className="flex items-center justify-between p-4 bg-surface rounded-xl">
             <div className="flex items-center gap-2 text-sm font-semibold">
               <Bell className="w-4 h-4 text-shg-primary" />
-              WhatsApp Alerts
+              {t('whatsappAlerts', 'WhatsApp Alerts')}
             </div>
             <button
               onClick={() => setSettings((s) => ({ ...s, whatsappAlerts: !s.whatsappAlerts }))}
@@ -245,7 +312,7 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
           <div className="flex items-center justify-between p-4 bg-surface rounded-xl">
             <div className="flex items-center gap-2 text-sm font-semibold">
               <CalendarClock className="w-4 h-4 text-shg-primary" />
-              Weekly Financial Digest
+              {t('weeklyDigest', 'Weekly Financial Digest')}
             </div>
             <button
               onClick={() => setSettings((s) => ({ ...s, weeklyDigest: !s.weeklyDigest }))}
@@ -256,12 +323,79 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
           </div>
 
           <button
-            onClick={() => toast.success('Settings saved successfully')}
+            onClick={() => {
+              saveMemberSettings(memberId, settings);
+              toast.success(`${t('savePreferences', 'Save Preferences')} (${settings.language})`);
+            }}
             className="px-5 py-2.5 bg-shg-primary text-white rounded-xl font-semibold text-sm inline-flex items-center gap-2"
           >
             <Save className="w-4 h-4" />
-            Save Preferences
+            {t('savePreferences', 'Save Preferences')}
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeSection === 'treasury') {
+    return (
+      <div className="p-6 lg:p-10 max-w-5xl mx-auto space-y-6">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-shg-primary mb-2">Member Treasury View</p>
+          <h2 className="text-2xl font-black font-headline text-on-surface">Savings and Loan Snapshot</h2>
+        </div>
+        <div className="bg-white border border-border/50 rounded-2xl p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="p-4 bg-surface rounded-xl border border-border/40">
+            <p className="text-xs font-bold uppercase text-muted-foreground">Total Savings</p>
+            <p className="text-xl font-black mt-2">₹{member?.totalSavings?.toLocaleString('en-IN') || 0}</p>
+          </div>
+          <div className="p-4 bg-surface rounded-xl border border-border/40">
+            <p className="text-xs font-bold uppercase text-muted-foreground">Active Loans</p>
+            <p className="text-xl font-black mt-2">₹{member?.activeLoansAmount?.toLocaleString('en-IN') || 0}</p>
+          </div>
+          <div className="p-4 bg-surface rounded-xl border border-border/40">
+            <p className="text-xs font-bold uppercase text-muted-foreground">Yield Earned</p>
+            <p className="text-xl font-black mt-2">₹{member?.yieldEarned?.toLocaleString('en-IN') || 0}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeSection === 'audit') {
+    const rows = (member?.transactions || []).filter((tx: any) => {
+      const q = auditQuery.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        String(tx.description || '').toLowerCase().includes(q) ||
+        String(tx.txHash || '').toLowerCase().includes(q) ||
+        String(tx.type || '').toLowerCase().includes(q)
+      );
+    });
+
+    return (
+      <div className="p-6 lg:p-10 max-w-5xl mx-auto space-y-6">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-shg-primary mb-2">Immutable Audit Trail</p>
+            <h2 className="text-2xl font-black font-headline text-on-surface">On-Chain Activity Logs</h2>
+          </div>
+          <input
+            value={auditQuery}
+            onChange={(e) => setAuditQuery(e.target.value)}
+            placeholder="Search by tx hash, type, or description"
+            className="w-full max-w-sm border border-border rounded-xl px-3 py-2 text-sm"
+          />
+        </div>
+        <div className="bg-white border border-border/50 rounded-2xl divide-y divide-border/40">
+          {rows.length === 0 ? (
+            <p className="p-6 text-sm text-muted-foreground">No matching logs found.</p>
+          ) : rows.map((tx: any) => (
+            <div key={tx.id} className="p-4">
+              <p className="text-sm font-semibold text-on-surface">{tx.description}</p>
+              <p className="text-xs text-muted-foreground mt-1">{tx.type} · TX {String(tx.txHash || '').slice(0, 20)}...</p>
+            </div>
+          ))}
         </div>
       </div>
     );

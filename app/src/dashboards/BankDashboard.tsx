@@ -9,11 +9,12 @@ import {
   LifeBuoy,
   Save,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { gsap } from 'gsap';
 import { useApiFetch, useApiMutation, useApiPolling } from '../hooks/useApi';
 import { qrApi, statsApi } from '../lib/api';
 import { toast } from 'sonner';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const Skeleton = ({ className = '' }: { className?: string }) => (
   <div className={`bg-surface animate-pulse rounded-lg ${className}`} />
@@ -30,11 +31,65 @@ interface BankDashboardProps {
   activeSection?: string;
 }
 
+type BankSettings = {
+  preferredLanguage: string;
+  autoAuditAlerts: boolean;
+  grantApproval2FA: boolean;
+};
+
+const BANK_SETTINGS_STORAGE_KEY = 'saheli-bank-settings';
+
+function loadBankSettings(): BankSettings | null {
+  try {
+    const raw = localStorage.getItem(BANK_SETTINGS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<BankSettings>;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      preferredLanguage: typeof parsed.preferredLanguage === 'string' ? parsed.preferredLanguage : 'English',
+      autoAuditAlerts: typeof parsed.autoAuditAlerts === 'boolean' ? parsed.autoAuditAlerts : true,
+      grantApproval2FA: typeof parsed.grantApproval2FA === 'boolean' ? parsed.grantApproval2FA : true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveBankSettings(settings: BankSettings) {
+  try {
+    localStorage.setItem(BANK_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // Ignore storage write failures.
+  }
+}
+
 export default function BankDashboard({ activeSection = 'scanner' }: BankDashboardProps) {
   const dashboardRef = useRef<HTMLDivElement>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanInput, setScanInput] = useState('');
   const [scanResult, setScanResult] = useState<any>(null);
+  const [directoryQuery, setDirectoryQuery] = useState('');
+  const [auditFilter, setAuditFilter] = useState<'all' | 'IMMUTABLE_OK' | 'PENDING_AUDIT' | 'FLAGGED'>('all');
+  const [settings, setSettings] = useState<BankSettings>({
+    preferredLanguage: 'English',
+    autoAuditAlerts: true,
+    grantApproval2FA: true,
+  });
+  const { language, setLanguage, t, languages, getLanguageLabel } = useLanguage();
+
+  useEffect(() => {
+    const saved = loadBankSettings();
+    if (!saved) {
+      setSettings((s) => ({ ...s, preferredLanguage: language }));
+      return;
+    }
+
+    setSettings(saved);
+    if (saved.preferredLanguage !== language) {
+      setLanguage(saved.preferredLanguage as any);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: stats, loading: loadingStats, refetch: refetchStats } = useApiFetch(() => statsApi.getInstitutional());
   const { data: shgDirectory, loading: loadingDirectory } = useApiFetch(() => statsApi.getSHGDirectory());
@@ -43,10 +98,28 @@ export default function BankDashboard({ activeSection = 'scanner' }: BankDashboa
   const { mutate: approveGrant, loading: approvingGrant } = useApiMutation((_input: null) => statsApi.approveGrant());
 
   useEffect(() => {
-    if (!loadingStats) {
+    setSettings((s) => ({ ...s, preferredLanguage: language }));
+  }, [language]);
+
+  const filteredDirectory = useMemo(() => {
+    const q = directoryQuery.trim().toLowerCase();
+    return (shgDirectory || []).filter((shg: any) => {
+      const matchesFilter = auditFilter === 'all' || shg.auditStatus === auditFilter;
+      if (!matchesFilter) return false;
+      if (!q) return true;
+      return (
+        String(shg.name || '').toLowerCase().includes(q) ||
+        String(shg.registrationId || '').toLowerCase().includes(q)
+      );
+    });
+  }, [shgDirectory, directoryQuery, auditFilter]);
+
+  useEffect(() => {
+    const root = dashboardRef.current;
+    if (!loadingStats && root && root.querySelector('.dashboard-card')) {
       const ctx = gsap.context(() => {
         gsap.from('.dashboard-card', { y: 40, opacity: 0, duration: 0.6, stagger: 0.1, ease: 'power2.out' });
-      }, dashboardRef);
+      }, root);
       return () => ctx.revert();
     }
   }, [loadingStats]);
@@ -86,18 +159,84 @@ export default function BankDashboard({ activeSection = 'scanner' }: BankDashboa
     }
   };
 
+  const handleCycleFilter = () => {
+    const order: Array<'all' | 'IMMUTABLE_OK' | 'PENDING_AUDIT' | 'FLAGGED'> = ['all', 'IMMUTABLE_OK', 'PENDING_AUDIT', 'FLAGGED'];
+    const idx = order.indexOf(auditFilter);
+    const next = order[(idx + 1) % order.length];
+    setAuditFilter(next);
+    toast.success(next === 'all' ? 'Showing all SHGs' : `Filter: ${next}`);
+  };
+
+  const handleDownloadDirectory = () => {
+    const rows = [
+      ['Group Name', 'Registration ID', 'Trust Score', 'Active Loans', 'Yield/mo', 'Audit Status'],
+      ...filteredDirectory.map((shg: any) => [shg.name, shg.registrationId, shg.trustScore, shg.activeLoans, shg.yieldThisMonth, shg.auditStatus]),
+    ];
+    const csv = rows.map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `saheli-shg-directory-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Regional SHG directory exported');
+  };
+
   if (activeSection === 'settings') {
     return (
       <div className="p-6 lg:p-10 max-w-4xl mx-auto space-y-6">
         <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-shg-primary mb-2">Institution Settings</p>
-          <h2 className="text-2xl font-black font-headline text-on-surface">Settings</h2>
+          <p className="text-xs font-bold uppercase tracking-wider text-shg-primary mb-2">{t('institutionSettings', 'Institution Settings')}</p>
+          <h2 className="text-2xl font-black font-headline text-on-surface">{t('settings', 'Settings')}</h2>
         </div>
         <div className="bg-white border border-border/50 rounded-2xl p-6 space-y-4">
           <p className="text-sm text-muted-foreground">Configure bank-level scanner workflows, audit frequency, and grant release preferences.</p>
-          <button onClick={() => toast.success('Institution settings saved')} className="px-5 py-2.5 bg-shg-primary text-white rounded-xl font-semibold text-sm inline-flex items-center gap-2">
+          <div>
+            <p className="text-xs font-bold uppercase text-muted-foreground mb-2">{t('preferredLanguage', 'Preferred Language')}</p>
+            <select
+              value={settings.preferredLanguage}
+              onChange={(e) => {
+                const next = e.target.value as typeof language;
+                setLanguage(next);
+                toast.success(`${t('languageUpdated', 'Language updated')}: ${getLanguageLabel(next)}`);
+              }}
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm font-medium text-on-surface focus:outline-none focus:ring-2 focus:ring-shg-primary/30"
+            >
+              {languages.map((lang) => (
+                <option key={lang} value={lang}>
+                  {getLanguageLabel(lang)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center justify-between p-4 bg-surface rounded-xl">
+            <span className="text-sm font-semibold">{t('autoAuditAlerts', 'Auto Audit Alerts')}</span>
+            <button
+              onClick={() => setSettings((s) => ({ ...s, autoAuditAlerts: !s.autoAuditAlerts }))}
+              className={`w-12 h-6 rounded-full ${settings.autoAuditAlerts ? 'bg-shg-primary' : 'bg-border'}`}
+            >
+              <span className={`block w-5 h-5 bg-white rounded-full transition-transform ${settings.autoAuditAlerts ? 'translate-x-6' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+          <div className="flex items-center justify-between p-4 bg-surface rounded-xl">
+            <span className="text-sm font-semibold">{t('grantApproval2FA', 'Grant Approval 2FA')}</span>
+            <button
+              onClick={() => setSettings((s) => ({ ...s, grantApproval2FA: !s.grantApproval2FA }))}
+              className={`w-12 h-6 rounded-full ${settings.grantApproval2FA ? 'bg-shg-primary' : 'bg-border'}`}
+            >
+              <span className={`block w-5 h-5 bg-white rounded-full transition-transform ${settings.grantApproval2FA ? 'translate-x-6' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+          <button
+            onClick={() => {
+              saveBankSettings(settings);
+              toast.success('Institution settings saved');
+            }}
+            className="px-5 py-2.5 bg-shg-primary text-white rounded-xl font-semibold text-sm inline-flex items-center gap-2"
+          >
             <Save className="w-4 h-4" />
-            Save Settings
+            {t('saveSettings', 'Save Settings')}
           </button>
         </div>
       </div>
@@ -244,9 +383,18 @@ export default function BankDashboard({ activeSection = 'scanner' }: BankDashboa
                 <span className="ml-2 text-xs font-normal text-muted-foreground">({shgDirectory.length} groups)</span>
               )}
             </h3>
-            <div className="flex gap-2">
-              <button className="p-2 hover:bg-surface rounded-lg transition-colors"><Filter className="w-5 h-5 text-muted-foreground" /></button>
-              <button className="p-2 hover:bg-surface rounded-lg transition-colors"><Download className="w-5 h-5 text-muted-foreground" /></button>
+            <div className="flex items-center gap-2">
+              <div className="hidden md:flex items-center bg-surface rounded-lg px-2">
+                <Search className="w-4 h-4 text-muted-foreground" />
+                <input
+                  value={directoryQuery}
+                  onChange={(e) => setDirectoryQuery(e.target.value)}
+                  placeholder="Search SHG or registration ID"
+                  className="bg-transparent px-2 py-1.5 text-sm focus:outline-none w-52"
+                />
+              </div>
+              <button onClick={handleCycleFilter} className="p-2 hover:bg-surface rounded-lg transition-colors" title={`Current filter: ${auditFilter}`}><Filter className="w-5 h-5 text-muted-foreground" /></button>
+              <button onClick={handleDownloadDirectory} className="p-2 hover:bg-surface rounded-lg transition-colors"><Download className="w-5 h-5 text-muted-foreground" /></button>
             </div>
           </div>
           <div className="overflow-x-auto">
@@ -270,7 +418,7 @@ export default function BankDashboard({ activeSection = 'scanner' }: BankDashboa
                       ))}
                     </tr>
                   ))
-                ) : (shgDirectory || []).map((shg: any, i: number) => (
+                ) : filteredDirectory.map((shg: any, i: number) => (
                   <tr key={shg.id} className="hover:bg-surface/50 transition-colors group">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
@@ -312,7 +460,14 @@ export default function BankDashboard({ activeSection = 'scanner' }: BankDashboa
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button className="text-shg-primary font-bold text-sm hover:underline flex items-center gap-1 ml-auto">
+                      <button
+                        onClick={() => {
+                          setScannerOpen(true);
+                          setScanInput(shg.lastTxHash || '');
+                          toast.info(`Reviewing ledger for ${shg.name}`);
+                        }}
+                        className="text-shg-primary font-bold text-sm hover:underline flex items-center gap-1 ml-auto"
+                      >
                         <Search className="w-3 h-3" />
                         Review Ledger
                       </button>
