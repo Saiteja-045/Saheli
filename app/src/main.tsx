@@ -7,18 +7,10 @@ import { LanguageProvider } from './contexts/LanguageContext'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-<<<<<<< HEAD
+    <LanguageProvider>
     <AuthProvider>
       <App />
     </AuthProvider>
-=======
-    <LanguageProvider>
-      <AuthProvider>
-        <WalletProvider>
-          <App />
-        </WalletProvider>
-      </AuthProvider>
     </LanguageProvider>
->>>>>>> 6cd127775d3326dac72f1b349e2afe7f4ac32378
   </StrictMode>,
 )

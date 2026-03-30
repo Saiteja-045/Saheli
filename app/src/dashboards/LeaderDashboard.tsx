@@ -73,7 +73,6 @@ export default function LeaderDashboard({ isReadOnly = false, activeSection = 't
   const { mutate: approveLoan, loading: approvingLoan } = useApiMutation((id: string) => loansApi.approve(id));
 
   useEffect(() => {
-<<<<<<< HEAD
     if (!txForm.memberId && members && members.length > 0) {
       const firstMemberId = members[0]._id || members[0].id || '';
       setTxForm((prev) => ({ ...prev, memberId: firstMemberId }));
@@ -81,11 +80,8 @@ export default function LeaderDashboard({ isReadOnly = false, activeSection = 't
   }, [members, txForm.memberId]);
 
   useEffect(() => {
-    if (!loadingTreasury) {
-=======
     const root = dashboardRef.current;
     if (!loadingTreasury && root && root.querySelector('.dashboard-card')) {
->>>>>>> 6cd127775d3326dac72f1b349e2afe7f4ac32378
       const ctx = gsap.context(() => {
         gsap.from('.dashboard-card', { y: 40, opacity: 0, duration: 0.6, stagger: 0.1, ease: 'power2.out' });
       }, root);

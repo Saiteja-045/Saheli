@@ -30,11 +30,7 @@ import QRCodeDisplay from '../components/QRCodeDisplay';
 import LoanRequestModal from '../components/LoanRequestModal';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
-<<<<<<< HEAD
-=======
-import { useWallet } from '../contexts/WalletContext';
 import { useLanguage } from '../contexts/LanguageContext';
->>>>>>> 6cd127775d3326dac72f1b349e2afe7f4ac32378
 
 // Skeleton loader
 const Skeleton = ({ className = '' }: { className?: string }) => (
@@ -94,15 +90,6 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
   const [auditQuery, setAuditQuery] = useState('');
 
   const { user } = useAuth();
-<<<<<<< HEAD
-  const memberId = user?._id || '';
-
-  const { data: rawMember, loading, error } = useApiFetch(() =>
-    memberId ? membersApi.getById(memberId) : Promise.resolve(null as any),
-    [memberId],
-  );
-=======
-  const { accountAddress } = useWallet();
   const { language, setLanguage, t, languages, getLanguageLabel } = useLanguage();
   const memberId = user?._id || 'm1'; // fallback to m1 only if no user (shouldn't happen)
 
@@ -121,7 +108,6 @@ export default function MemberDashboard({ activeSection = 'passport', onOpenAIAs
   }, [memberId]);
 
   const { data: rawMember, loading, error } = useApiFetch(() => membersApi.getById(memberId));
->>>>>>> 6cd127775d3326dac72f1b349e2afe7f4ac32378
   const { data: repayments } = useApiFetch(() => agentApi.getRepayments());
 
   // If it's a real MongoDB user newly registered, they might lack these fields from mockData

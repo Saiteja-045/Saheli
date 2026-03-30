@@ -300,7 +300,6 @@ cd backend
 npm run build
 ```
 
-<<<<<<< HEAD
 ## MERN Readiness
 
 The project now runs as a MERN stack in runtime paths:
@@ -365,7 +364,5 @@ curl -X POST http://127.0.0.1:3001/api/auth/seed-demo
 ```
 
 ## Known Demo Constraints
-=======
->>>>>>> 6cd127775d3326dac72f1b349e2afe7f4ac32378
 
 

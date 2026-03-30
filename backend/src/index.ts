@@ -1,22 +1,37 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-<<<<<<< HEAD
 import path from 'path';
 import fs from 'fs';
-=======
 import twilio from 'twilio';
->>>>>>> 6cd127775d3326dac72f1b349e2afe7f4ac32378
-import { connectDB } from './config/db';
+import { connectDB, isDatabaseReady } from './config/db';
 import { initializeAgentState } from './services/agentEngine';
 
 dotenv.config();
 
-// Connect to MongoDB
-connectDB();
-initializeAgentState().catch(err => {
-  console.error('Failed to initialize agent state:', err.message);
-});
+let agentStateInitialized = false;
+
+async function ensureDatabaseConnection(): Promise<void> {
+  const connected = await connectDB();
+  if (!connected) {
+    console.error('⚠️ API started without MongoDB. Retrying DB connection in 10s...');
+    setTimeout(() => {
+      void ensureDatabaseConnection();
+    }, 10000);
+    return;
+  }
+
+  if (!agentStateInitialized) {
+    try {
+      await initializeAgentState();
+      agentStateInitialized = true;
+    } catch (err: any) {
+      console.error('Failed to initialize agent state:', err.message);
+    }
+  }
+}
+
+void ensureDatabaseConnection();
 
 import authRouter from './routes/auth';
 import membersRouter from './routes/members';
@@ -160,6 +175,18 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
+// Prevent Mongoose buffering timeouts by rejecting DB-backed API calls early.
+app.use('/api', (_req, res, next) => {
+  if (!isDatabaseReady()) {
+    res.status(503).json({
+      success: false,
+      error: 'Database unavailable. Start MongoDB and retry.',
+    });
+    return;
+  }
+  next();
+});
+
 // ─── Routes ────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRouter);
 app.use('/api/members', membersRouter);
@@ -179,9 +206,10 @@ if (fs.existsSync(FRONTEND_DIST_PATH)) {
 // ─── Health Check ──────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
   res.json({
-    status: 'ok',
+    status: isDatabaseReady() ? 'ok' : 'degraded',
     service: 'Saheli Saheli API',
     version: '1.0.0',
+    database: isDatabaseReady() ? 'connected' : 'disconnected',
     timestamp: new Date().toISOString(),
     endpoints: [
       'GET  /api/members',

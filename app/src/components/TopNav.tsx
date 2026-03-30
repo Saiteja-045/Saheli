@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 import { Search, Bell, Bot, User, Menu, X, LogOut } from 'lucide-react';
-=======
-import { Search, Bell, Bot, User, Menu, X, Wallet, LogOut, Unplug } from 'lucide-react';
->>>>>>> 6cd127775d3326dac72f1b349e2afe7f4ac32378
 import { useMemo, useState } from 'react';
 import { useApiPolling } from '../hooks/useApi';
 import { aiAgentApi } from '../lib/api';
@@ -24,7 +20,6 @@ export default function TopNav({ currentRole, onOpenAIAssistant, onSignOut, onSe
   const [searchQuery, setSearchQuery] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
   const [lastOpenedAt, setLastOpenedAt] = useState(0);
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   const roleLabels: Record<UserRole, string> = {
     member: 'Member',
@@ -78,13 +73,9 @@ export default function TopNav({ currentRole, onOpenAIAssistant, onSignOut, onSe
             <Search className="w-4 h-4 text-muted-foreground ml-3" />
             <input
               type="text"
-<<<<<<< HEAD
-              placeholder={currentRole ? 'Search transactions...' : 'Search SHG or member ID...'}
-=======
-              placeholder={currentRole ? 'Search transactions...' : 'Search SHG or d-SBT ID...'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
->>>>>>> 6cd127775d3326dac72f1b349e2afe7f4ac32378
+              placeholder={currentRole ? 'Search transactions...' : 'Search SHG or member ID...'}
               className="bg-transparent border-none text-sm w-full py-2 px-2 focus:outline-none"
               onFocus={() => setSearchOpen(true)}
               onBlur={() => setSearchOpen(false)}
@@ -136,51 +127,14 @@ export default function TopNav({ currentRole, onOpenAIAssistant, onSignOut, onSe
             <Bot className="w-5 h-5 text-shg-primary" />
           </button>
 
-<<<<<<< HEAD
           {/* Account */}
           <div className="w-8 h-8 rounded-full bg-shg-primary/10 flex items-center justify-center">
             <User className="w-4 h-4 text-shg-primary" />
           </div>
-=======
-          {/* Account / Wallet */}
-          {isConnected && accountAddress ? (
-            <div className="flex items-center gap-2 relative">
-              <span className="hidden md:inline-block text-xs font-medium text-shg-primary bg-shg-primary/10 px-2 py-1 rounded-md">
-                {formatAddress(accountAddress)}
-              </span>
-              <button
-                onClick={() => setShowProfileMenu((v) => !v)}
-                className="w-8 h-8 rounded-full bg-shg-primary/10 flex items-center justify-center hover:bg-shg-primary/20 transition-colors"
-                title="Profile"
-              >
-                <User className="w-4 h-4 text-shg-primary" />
-              </button>
-              {showProfileMenu && (
-                <div className="absolute right-0 top-10 w-48 bg-white border border-border rounded-xl shadow-lg p-1.5 z-50">
-                  <div className="px-2 py-1.5 text-[11px] text-muted-foreground">Connected: {formatAddress(accountAddress)}</div>
-                  <button
-                    onClick={() => {
-                      disconnectWallet();
-                      setShowProfileMenu(false);
-                    }}
-                    className="w-full flex items-center gap-2 px-2 py-2 text-sm rounded-lg hover:bg-surface text-left"
-                  >
-                    <Unplug className="w-4 h-4 text-muted-foreground" />
-                    Disconnect Wallet
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <button
-              onClick={connectWallet}
-              className="flex items-center gap-2 bg-shg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-shg-primary/90 transition-all shadow-sm"
-            >
-              <Wallet className="w-4 h-4" />
-              <span className="hidden md:inline">Connect Pera</span>
-            </button>
-          )}
->>>>>>> 6cd127775d3326dac72f1b349e2afe7f4ac32378
+          {/* Account */}
+          <div className="w-8 h-8 rounded-full bg-shg-primary/10 flex items-center justify-center">
+            <User className="w-4 h-4 text-shg-primary" />
+          </div>
 
           {/* Sign Out - Desktop */}
           {onSignOut && (

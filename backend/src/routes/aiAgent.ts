@@ -20,8 +20,6 @@ type AILogEntry = {
   amount?: number;
 };
 
-<<<<<<< HEAD
-=======
 async function generateOpenAIWhatsAppReply(args: {
   message: string;
   memberName: string;
@@ -77,7 +75,6 @@ async function generateOpenAIWhatsAppReply(args: {
 }
 
 // Intents the AI agent can parse from WhatsApp messages
->>>>>>> 6cd127775d3326dac72f1b349e2afe7f4ac32378
 function parseIntent(message: string): {
   intent: 'deposit' | 'withdraw' | 'loan' | 'balance' | 'qr' | 'unknown';
   amount?: number;
@@ -510,8 +507,6 @@ router.post('/chat', async (req: Request, res: Response) => {
   const intent = parseIntent(message);
   const response = await buildAgentResponse(intent, memberName, memberId);
 
-<<<<<<< HEAD
-=======
   // For free-form WhatsApp queries, try a real LLM response and keep deterministic fallback.
   if (intent.intent === 'unknown') {
     const llmReply = await generateOpenAIWhatsAppReply({
@@ -526,7 +521,6 @@ router.post('/chat', async (req: Request, res: Response) => {
   // Log the interaction
   console.log(`[AI Agent] Member: ${memberName} | Intent: ${intent.intent} | Message: "${message}"`);
 
->>>>>>> 6cd127775d3326dac72f1b349e2afe7f4ac32378
   res.json({
     success: true,
     data: {
